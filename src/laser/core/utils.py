@@ -2,7 +2,7 @@
 This module provides utility functions for the laser-measles project.
 
 Functions:
-    calc_capacity(population: np.uint32, nticks: np.uint32, cbr: np.float32, verbose: bool = False) -> np.uint32:
+    calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
         Calculate the population capacity after a given number of ticks based on a constant birth rate.
 
     grid(shape: Tuple[int, int], fill_value: float = 0.0) -> np.ndarray:
@@ -10,50 +10,62 @@ Functions:
 
 """
 
-import click
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
 
 
-def calc_capacity(population: np.uint32, nticks: np.uint32, cbr: np.float32, verbose: bool = False) -> np.uint32:
+def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
     """
-    Calculate the population capacity after a given number of ticks based on a constant birth rate (CBR).
-
+    Estimate the required capacity (number of agents) to model a population given birthrates over time.
     Args:
-        population (np.uint32): The initial population.
-        nticks (np.uint32): The number of ticks (time steps) to simulate.
-        cbr (np.float32): The constant birth rate per 1000 people per year.
-        verbose (bool, optional): If True, prints detailed population growth information. Defaults to False.
+        birthrates (np.ndarray): 2D array of shape (nsteps, nnodes) representing birthrates (CBR) per 1,000 individuals per year.
+        initial_pop (np.ndarray): 1D array of length nnodes representing the initial population at each node.
+        safety_factor (float): Safety factor to account for variability in population growth. Default is 1.0.
 
     Returns:
-        np.uint32: The estimated population capacity after the given number of ticks.
+        np.ndarray: 1D array of length nnodes representing the estimated required capacity (number of agents) at each node.
     """
+    # Validate birthrates shape against initial_pop shape
+    _, nnodes = birthrates.shape
+    assert len(initial_pop) == nnodes, f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match"
 
-    # We assume a constant birth rate (CBR) for the population growth
-    # The formula is: P(t) = P(0) * (1 + CBR)^t
-    # where P(t) is the population at time t, P(0) is the initial population, and t is the number of ticks
-    # We need to allocate space for the population data for each tick
-    # We will use the maximum population growth to estimate the capacity
-    daily_rate = (cbr / 1000) / 365.0  # CBR is per 1000 people per year
-    capacity = np.uint32(population * (1 + daily_rate) ** nticks)
+    # Validate birthrates values, must be >= 0 and <= 100
+    assert np.all(birthrates >= 0.0), "All birthrate values must be non-negative"
+    assert np.all(birthrates <= 100.0), "All birthrate values must be less than or equal to 100"
 
-    if verbose:
-        click.echo(f"Population growth: {population:,} … {capacity:,}")
-        alternate = np.uint32(population * (1 + cbr / 1000) ** (nticks / 365))
-        click.echo(f"Alternate growth:  {population:,} … {alternate:,}")
+    # Validate safety_factor
+    assert 0 <= safety_factor <= 6, f"safety_factor must be between 0 and 6, got {safety_factor}"
 
-    return capacity
+    # Convert CBR to daily growth rate
+    # CBR = births per 1,000 individuals per year
+    # CBR / 1000 = births per individual per year
+    # Growth = (1 + CBR / 1000) per individual per year
+    # Daily growth = (1 + CBR / 1000) ^ (1/365)
+    # Daily growth rate = (1 + CBR / 1000) ^ (1/365) - 1
+    lamda = (1.0 + birthrates / 1000) ** (1.0 / 365) - 1.0
+
+    # Geometric Brownian motion approximation for population growth (https://en.wikipedia.org/wiki/Geometric_Brownian_motion#Properties)
+    # E(P_t) = P_0 * exp(mu * t)
+    # where mu is the daily growth rate and t is the number of time steps (days)
+
+    # Since we may have time-varying rates, add up daily growth rates over all time steps
+    exp_mu_t = np.exp(lamda.sum(axis=0))
+
+    safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
+    estimates = np.round(initial_pop * safety_multiplier * exp_mu_t).astype(np.int32)
+
+    return estimates
 
 
-def grid(M=5, N=5, node_size_km=10, population_fn=None, origin_x=0, origin_y=0):
+def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origin_y=0):
     """
     Create an MxN grid of cells anchored at (lat, long) with populations and geometries.
 
     Args:
         M (int): Number of rows (north-south).
         N (int): Number of columns (east-west).
-        node_size_km (float): Size of each cell in kilometers (default 10).
+        node_size_degs (float): Size of each cell in decimal degrees (default 0.08983 ≈ 10km at the equator).
         population_fn (callable): Function(row, col) returning population for a cell. Default is uniform random between 1,000 and 100,000.
         origin_x (float): longitude of the origin in decimal degrees (bottom-left corner) -180 <= origin_x < 180.
         origin_y (float): latitude of the origin in decimal degrees (bottom-left corner) -90 <= origin_y < 90.
@@ -66,8 +78,10 @@ def grid(M=5, N=5, node_size_km=10, population_fn=None, origin_x=0, origin_y=0):
         raise ValueError("M must be >= 1")
     if N < 1:
         raise ValueError("N must be >= 1")
-    if node_size_km <= 0:
-        raise ValueError("node_size_km must be > 0")
+    if node_size_degs <= 0:
+        raise ValueError("node_size_degs must be > 0")
+    if node_size_degs > 1.0:
+        raise ValueError("node_size_degs must be <= 1.0")
     if not (-180 <= origin_x < 180):
         raise ValueError("origin_x must be -180 <= origin_x < 180")
     if not (-90 <= origin_y < 90):
@@ -78,19 +92,15 @@ def grid(M=5, N=5, node_size_km=10, population_fn=None, origin_x=0, origin_y=0):
         def population_fn(row: int, col: int) -> int:
             return int(np.random.uniform(1_000, 100_000))
 
-    # Convert node_size_km from kilometers to degrees (approximate)
-    km_per_degree = 111.320
-    node_size_deg = node_size_km / km_per_degree
-
     cells = []
     nodeid = 0
     for row in range(M):
         for col in range(N):
             # TODO - use latitude sensitive conversion of km to degrees
-            x0 = origin_x + col * node_size_deg
-            y0 = origin_y + row * node_size_deg
-            x1 = x0 + node_size_deg
-            y1 = y0 + node_size_deg
+            x0 = origin_x + col * node_size_degs
+            y0 = origin_y + row * node_size_degs
+            x1 = x0 + node_size_degs
+            y1 = y0 + node_size_degs
             poly = Polygon(
                 [
                     (x0, y0),  # SW

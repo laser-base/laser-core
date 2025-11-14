@@ -370,15 +370,13 @@ class LaserFrame:
                 else:
                     cbr_value = cbr[0] if isinstance(cbr, (list, np.ndarray)) else cbr
                 ppl = np.sum(n_ppl)
-                expected_births = calc_capacity(ppl, nt, cbr_value) - ppl
-                # Fudge factor: We multiply the expected number of births by a small safety margin
-                # to ensure our estimate is higher than any likely realized (stochastic) outcome.
-                # This accounts for randomness in actual births drawn from a Poisson (or similar) process.
-                # The chosen multiplier (e.g., 1.025) is based on empirical trials and reflects the
-                # low but non-zero probability of occasional spikes in simulated births.
-                # Too large a fudge factor wastes memory; too small risks overflow. 1.025 is a balance.
-                fudge_factor = 1 + 4 / np.sqrt(expected_births)
-                capacity = int(fudge_factor * (count + expected_births))
+
+                estimate = calc_capacity(
+                    birthrates=np.full((nt, 1), cbr_value, dtype=np.float32),  # extend CBR to (nticks, 1)
+                    initial_pop=np.array([ppl], dtype=np.int32),  # initial_pop as (1,)
+                    safety_factor=1.0,
+                )
+                capacity = int(estimate[0])
             else:
                 capacity = count
 
