@@ -1,4 +1,4 @@
-__version__ = "0.7.0-no-cache"
+__version__ = "0.7.0"
 
 from .extension import compiled
 from .laserframe import LaserFrame
