@@ -72,16 +72,16 @@ class TestUtilityFunctions(unittest.TestCase):
 
             # Check that estimates increase with increasing CBR
             if previous is not None:
-                assert np.all(estimate > previous), (
-                    f"Estimate \n{estimate}\n with CBR {cbr} not greater than previous estimate at lower CBR \n{previous}"
-                )
+                assert np.all(
+                    estimate > previous
+                ), f"Estimate \n{estimate}\n with CBR {cbr} not greater than previous estimate at lower CBR \n{previous}"
             previous = estimate
 
             # Now test with safety factor of 2.0
             safer = calc_capacity(birthrates, populations, safety_factor=2.0)
-            assert np.all(safer > estimate), (
-                f"Estimate with safety factor 2.0 \n{safer}\n not greater than estimate with safety factor 1.0 \n{estimate}"
-            )
+            assert np.all(
+                safer > estimate
+            ), f"Estimate with safety factor 2.0 \n{safer}\n not greater than estimate with safety factor 1.0 \n{estimate}"
 
         return
 
@@ -89,19 +89,19 @@ class TestUtilityFunctions(unittest.TestCase):
 class TestGridUtilityFunction(unittest.TestCase):
     def check_grid_validity(self, gdf, M, N, node_size_degs=0.1, origin_x=0, origin_y=0):
         assert gdf.shape[0] == M * N, f"Expected {M * N} rows, got {gdf.shape[0]}"
-        assert all(col in gdf.columns for col in ["nodeid", "population", "geometry"]), (
-            f"Expected columns 'nodeid', 'population', 'geometry', got {gdf.columns}"
-        )
+        assert all(
+            col in gdf.columns for col in ["nodeid", "population", "geometry"]
+        ), f"Expected columns 'nodeid', 'population', 'geometry', got {gdf.columns}"
 
         assert gdf["nodeid"].min() == 0, f"Expected min nodeid 0, got {gdf['nodeid'].min()}"
         assert gdf["nodeid"].max() == M * N - 1, f"Expected max nodeid {M * N - 1}, got {gdf['nodeid'].max()}"
 
-        assert gdf["geometry"].geom_type.nunique() == 1, (
-            f"Expected all geometries to have the same type, got {gdf['geometry'].geom_type.unique()}"
-        )
-        assert gdf["geometry"].geom_type.unique()[0] == "Polygon", (
-            f"Expected all geometries to be Polygons, got {gdf['geometry'].geom_type.unique()}"
-        )
+        assert (
+            gdf["geometry"].geom_type.nunique() == 1
+        ), f"Expected all geometries to have the same type, got {gdf['geometry'].geom_type.unique()}"
+        assert (
+            gdf["geometry"].geom_type.unique()[0] == "Polygon"
+        ), f"Expected all geometries to be Polygons, got {gdf['geometry'].geom_type.unique()}"
 
         # Check bounding box: lower left should be (origin_x, origin_y), upper right should be (origin_x + N*node_size_degs, origin_y + M*node_size_degs)
         # 1 degree latitude ~ 111 km, longitude varies but for small grids this is a reasonable check
