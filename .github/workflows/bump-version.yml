@@ -9,6 +9,10 @@ on:
         required: true
         default: 'patch'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   approve:
     name: Approve version bump
@@ -58,6 +62,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.BOT_PAT }}
           commit-message: "Bump ${{ github.event.inputs.version_type }} version to ${{ steps.bump_version.outputs.new_version }}"
           branch: bump/version-${{ steps.bump_version.outputs.new_version }}
           title: "Bump ${{ github.event.inputs.version_type }} version to ${{ steps.bump_version.outputs.new_version }}"
