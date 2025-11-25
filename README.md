@@ -24,7 +24,7 @@
 python3 -m pip install laser-core
 ```
 
-However, it may be more instructive to install one the disease packages built on `laser-core` to understand what `laser-core` provides and what is expected to be in a disease model. See [`laser-measles`](https://github.com/InstituteforDiseaseModeling/laser-measles).
+However, it may be more instructive to install one the disease packages built on `laser-core` to understand what `laser-core` provides and what is expected to be in a disease model. See [`laser-generic`](https://github.com/laser-base/laser-generic).
 
 ### Documentation
 
