@@ -44,7 +44,7 @@ class TestUtilityFunctions(unittest.TestCase):
             M=10,
             N=10,
             node_size_degs=0.1,
-            population_fn=lambda x, y: int(np.random.uniform(10_000, 1_000_000)),
+            population_fn=lambda row, col: int(np.random.uniform(10_000, 1_000_000)),
             origin_x=_longitude,
             origin_y=_latitude,
         )

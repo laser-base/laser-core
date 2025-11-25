@@ -43,6 +43,7 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     # Growth = (1 + CBR / 1000) per individual per year
     # Daily growth = (1 + CBR / 1000) ^ (1/365)
     # Daily growth rate = (1 + CBR / 1000) ^ (1/365) - 1
+    # Note, sticking with "lamda" here a) for consistency with modern Greek and Unicode, b) to avoid confusion with Python keyword "lambda"
     lamda = (1.0 + birthrates / 1000) ** (1.0 / 365) - 1.0
 
     # Geometric Brownian motion approximation for population growth (https://en.wikipedia.org/wiki/Geometric_Brownian_motion#Properties)
@@ -50,6 +51,8 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     # where mu is the daily growth rate and t is the number of time steps (days)
 
     # Since we may have time-varying rates, add up daily growth rates over all time steps
+    # Consider alternative: np.prod(1 + lamda, axis=0)
+    # For 0 <= CBR <= 40, difference is negligible (< 1:1e6)
     exp_mu_t = np.exp(lamda.sum(axis=0))
 
     safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
