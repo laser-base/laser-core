@@ -42,7 +42,7 @@ jobs:
             tox_env: 'py39'
             cibw_arch: 'x86_64'
             cibw_build: false
-            os: 'macos-13'
+            os: 'macos-15-intel'
           - name: 'py39 (macos/arm64)'
             python: '3.9'
             toxpython: 'python3.9'
@@ -74,7 +74,7 @@ jobs:
             tox_env: 'py310'
             cibw_arch: 'x86_64'
             cibw_build: false
-            os: 'macos-13'
+            os: 'macos-15-intel'
           - name: 'py310 (macos/arm64)'
             python: '3.10'
             toxpython: 'python3.10'
@@ -106,7 +106,7 @@ jobs:
             tox_env: 'py311'
             cibw_arch: 'x86_64'
             cibw_build: 'cp39-macosx_x86_64'
-            os: 'macos-13'
+            os: 'macos-15-intel'
           - name: 'py311 (macos/arm64)'
             python: '3.11'
             toxpython: 'python3.11'
@@ -138,7 +138,7 @@ jobs:
             tox_env: 'py312'
             cibw_arch: 'x86_64'
             cibw_build: false
-            os: 'macos-13'
+            os: 'macos-15-intel'
           - name: 'py312 (macos/arm64)'
             python: '3.12'
             toxpython: 'python3.12'
@@ -170,7 +170,7 @@ jobs:
             tox_env: 'py313'
             cibw_arch: 'x86_64'
             cibw_build: false
-            os: 'macos-13'
+            os: 'macos-15-intel'
           - name: 'py313 (macos/arm64)'
             python: '3.13'
             toxpython: 'python3.13'
