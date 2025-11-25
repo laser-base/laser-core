@@ -51,7 +51,7 @@ jobs:
           NEW_VERSION=$(grep '^version =' pyproject.toml | sed -E "s/.*= *[\"'](.*)[\"']/\1/")
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          git checkout -b version-bump-$NEW_VERSION main
+          git checkout -b version-bump-$NEW_VERSION
           git add --all
           git commit -m "Bump ${{ github.event.inputs.version_type }} version $OLD_VERSION -> $NEW_VERSION"
           git push --set-upstream origin version-bump-$NEW_VERSION
