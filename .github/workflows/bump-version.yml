@@ -80,7 +80,7 @@ jobs:
         if: steps.cpr.outputs.pull-request-number != ''
         uses: hmarr/auto-approve-action@v4
         with:
-          github-token: ${{ secrets.BOT_PAT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
 
       - name: Enable auto-merge
