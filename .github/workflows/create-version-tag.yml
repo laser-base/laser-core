@@ -1,0 +1,31 @@
+name: Tag Version After Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  tag-version:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'bump/version-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ secrets.BOT_PAT }}
+
+      - name: Extract version from branch name
+        id: extract_version
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH#bump/version-}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.extract_version.outputs.version }}"
+          git push origin "v${{ steps.extract_version.outputs.version }}"
