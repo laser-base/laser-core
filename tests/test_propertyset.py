@@ -423,6 +423,20 @@ class TestPropertySet(unittest.TestCase):
         assert ps.ps == PropertySet({"e": 2.7182818285})
         assert ps.ps["e"] == 2.7182818285
 
+    def test_single_list_property_set(self):
+        """Test initialization from a single list."""
+        # assert that the PropertySet is initialized with a single list
+        ps = PropertySet([("a", 1), ("b", 2)])
+        assert ps.a == 1
+        assert ps.b == 2
+
+    def test_single_tuple_property_set(self):
+        """Test initialization from a single tuple."""
+        # assert that the PropertySet is initialized with a single tuple
+        ps = PropertySet((("a", 1), ("b", 2)))
+        assert ps.a == 1
+        assert ps.b == 2
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

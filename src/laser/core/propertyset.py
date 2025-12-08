@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Union
 
 
 class PropertySet:
@@ -66,19 +67,24 @@ class PropertySet:
         ```
     """
 
-    def __init__(self, *bags):
+    def __init__(self, *bags: Union[list, tuple, dict]):
         """
         Initialize a PropertySet to manage properties in a dictionary-like structure.
 
         Parameters:
-            bags (list or tuple or dictionary) : iterable, optional
-                A sequence of key-value pairs (e.g., lists, tuples, dictionaries) to initialize
-                the PropertySet. Keys must be strings, and values can be any type.
+            bags: A sequence of key-value pairs (e.g., lists, tuples, dictionaries) to initialize the PropertySet. Keys must be strings, and values can be any type.
         """
 
+        iterator_mapping = {
+            type(self): lambda o: o.__dict__.items(),
+            list: lambda o: o,
+            tuple: lambda o: o,
+            dict: lambda o: o.items(),
+        }
+
         for bag in bags:
-            assert isinstance(bag, (type(self), dict))
-            for key, value in (bag.__dict__ if isinstance(bag, type(self)) else bag).items():
+            it = iterator_mapping[type(bag)](bag)
+            for key, value in it:
                 setattr(self, key, value)
 
     def to_dict(self):
