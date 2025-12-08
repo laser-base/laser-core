@@ -269,7 +269,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
         a (float): Exponent applied to the population size of the origin.
         b (float): Exponent applied to the ratio of destination population to the sum of all populations at equal or lesser distances.
         include_home (bool): If True, includes the home population in the cumulative sum; otherwise, excludes it.
-        \*\*params: Additional parameters (not used in the current implementation).
+        **params: Additional parameters (not used in the current implementation).
 
     Returns:
         network (numpy.ndarray): A 2D array representing the migration network, where `network[i][j]` is the migration rate from location i to location j.
@@ -306,7 +306,7 @@ def radiation(pops, distances, k, include_home, **params):
     r"""
     Calculate the migration network using the radiation model.
 
-    (Simini F, Gonza ́lez MC, Maritan A, Baraba ́si AL. A universal model for mobility and migration patterns. Nature. 2012;484(7392):96-100.)
+    (Simini F, González MC, Maritan A, Barabási AL. A universal model for mobility and migration patterns. Nature. 2012;484(7392):96-100.)
 
     Mathematical formula:
         Element-by-element:
@@ -374,10 +374,10 @@ def distance(lat1, lon1, lat2=None, lon2=None):
     This function uses the Haversine formula to compute the distance between two points
     specified by their latitude and longitude in decimal degrees.
 
-    - If lat2 and lon2 are not provided, they default to lat1 and lon1, respectively. This supports the default case of calculating the NxN matrix of distances between all pairs of points in (lat1, lon1).
-    - If all arguments are scalars, will return a single scalar distance, (lat1, lon1) to (lat2, lon2).
-    - If lat2, lon2 are vectors, will return a vector of distances, (lat1, lon1) to each lat/lon in lat2, lon2.
-    - If lat1, lon1 and lat2, lon2 are vectors, will return a matrix with shape (N, M) of distances where N is the length of lat1/lon1 and M is the length of lat2/lon2.
+    - If `lat2` and `lon2` are not provided, they default to `lat1` and `lon1`, respectively. This supports the default case of calculating the NxN matrix of distances between all pairs of points in (`lat1`, ` lon1`).
+    - If all arguments are scalars, will return a single scalar distance, (`lat1`, `lon1`) to (`lat2`, `lon2`).
+    - If `lat2`, `lon2` are vectors, will return a vector of distances, (`lat1`, `lon1`) to each lat/lon in `lat2`, `lon2`.
+    - If `lat1`, `lon1` and `lat2`, `lon2` are vectors, will return a matrix with shape (N, M) of distances where N is the length of `lat1`/`lon1` and M is the length of `lat2`/`lon2`.
 
     Parameters:
         lat1 (float): Latitude of the first point(s) in decimal degrees [-90, 90].
