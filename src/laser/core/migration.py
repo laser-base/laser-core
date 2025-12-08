@@ -7,16 +7,24 @@ on the Earth's surface using the Haversine formula.
 
 Functions:
     gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: float, c: float, max_frac: Union[float, None]=None, kwargs) -> np.ndarray:
+        Compute a gravity-model migration network based on origin and destination populations and pairwise distances.
+
     row_normalizer(network: np.ndarray, max_rowsum: float) -> np.ndarray:
         Normalize the rows of a given network matrix such that no row sum exceeds a specified maximum value.
+
     competing_destinations(pops: np.ndarray, distances: np.ndarray, b: float, c: float, delta: float, params) -> np.ndarray:
+        Compute a migration network using the competing-destinations model, incorporating the influence of alternative destination nodes.
+
     stouffer(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: float, include_home: bool, params) -> np.ndarray:
         Compute a migration network using a modified Stouffer's model.
-    radiation(pops: np.ndarray, distances: np.ndarray, k: float, include_home: bool, params) -> np.ndarray:
-    distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        Calculate the great-circle distance between two points on the Earth's surface using the Haversine formula.
-"""
 
+    radiation(pops: np.ndarray, distances: np.ndarray, k: float, include_home: bool, params) -> np.ndarray:
+        Compute a migration network using the radiation model, which models flows based on intervening population rather than physical distance.
+
+    distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        Calculate the great-circle distance between two points on the Earth's surface
+        using the Haversine formula.
+"""
 from numbers import Number
 
 import numpy as np
@@ -26,19 +34,19 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
     r"""
     Calculate a gravity model network.
 
-    This function computes a gravity model network based on the provided populations and distances.
-    The gravity model estimates migration or interaction flows between populations using a mathematical formula
-    that incorporates scaling, population sizes, and distances.
+    This function computes a gravity model network based on the provided populations
+    and distances. The gravity model estimates migration or interaction flows between
+    populations using a mathematical formula that incorporates scaling, population sizes,
+    and distances.
 
-    Mathematical formula:
+    Mathematical formula::
         $$
         network_{i,j} = k \cdot \frac{p_i^a \cdot p_j^b}{distance_{i,j}^c}
         $$
 
-        As implemented in NumPy:
-        ```
+    As implemented in NumPy::
+
         network = k * (pops[:, np.newaxis] ** a) * (pops ** b) * (distances ** (-1 * c))
-        ```
 
     Parameters:
         pops (numpy.ndarray): 1D array of population sizes for each node.
@@ -50,15 +58,14 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
         \*\*kwargs: Additional keyword arguments (not used in the current implementation).
 
     Returns:
-        numpy.ndarray: A 2D matrix representing the interaction network, where each element `network[i, j]` corresponds
-            to the flow from node `i` to node `j`.
+        numpy.ndarray: A 2D matrix where element network[i, j] corresponds to the flow
+        from node i to node j.
 
-    Example usage:
-        ```
+    Example usage::
+
         import numpy as np
         from gravity_model import gravity
 
-        # Define populations and distances
         populations = np.array([1000, 500, 200])
         distances = np.array([
             [0, 2, 3],
@@ -66,23 +73,20 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
             [3, 1, 0]
         ])
 
-        # Parameters for the gravity model
         k = 0.5
         a = 1.0
         b = 1.0
         c = 2.0
 
-        # Compute the gravity model network
         migration_network = gravity(populations, distances, k, a, b, c)
 
         print("Migration Network:")
         print(migration_network)
-        ```
 
     Notes:
-        - The diagonal of the `distances` array is set to `1` internally to avoid division by zero.
-        - The diagonal of the output `network` matrix is set to `0` to represent no self-loops.
-        - Ensure the `distances` matrix is symmetric and non-negative.
+        - The diagonal of the distances matrix is set to 1 internally to avoid division by zero.
+        - The diagonal of the output network is set to 0 to represent no self-loops.
+        - Ensure the distances matrix is symmetric and non-negative.
     """
     # Ensure pops and distances are valid
     _sanity_checks(pops, distances, a=a, b=b, c=c, k=k)

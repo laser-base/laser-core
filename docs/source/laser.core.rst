@@ -20,6 +20,14 @@ laser.core.cli module
    :show-inheritance:
    :undoc-members:
 
+laser.core.distributions module
+-------------------------------
+
+.. automodule:: laser.core.distributions
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 laser.core.extension module
 ---------------------------
 
@@ -56,14 +64,6 @@ laser.core.random module
 ------------------------
 
 .. automodule:: laser.core.random
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-laser.core.sortedqueue module
------------------------------
-
-.. automodule:: laser.core.sortedqueue
    :members:
    :show-inheritance:
    :undoc-members:

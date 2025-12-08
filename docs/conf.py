@@ -61,4 +61,6 @@ mathjax3_config = {"TeX": {"Macros": {"small": ["{\\scriptstyle #1}", 1]}}}
 # Prevent the following warning:
 # sphinx/builders/linkcheck.py:86: RemovedInSphinx80Warning: The default value for 'linkcheck_report_timeouts_as_broken' will change to False in Sphinx 8, meaning that request timeouts will be reported with a new 'timeout' status, instead of as 'broken'. This is intended to provide more detail as to the failure mode. See https://github.com/sphinx-doc/sphinx/issues/11868 for details.
 #   warnings.warn(deprecation_msg, RemovedInSphinx80Warning, stacklevel=1)
+
+linkcheck_ignore = [r"https://www\.populationpyramid\.net/nigeria/2024/"]
 linkcheck_report_timeouts_as_broken = False
