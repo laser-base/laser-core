@@ -1,11 +1,19 @@
 """
 Various probability distributions implemented using NumPy and Numba.
 
-LASER based models generally move from pure NumPy to Numba-accelerated version of the core dynamics, e.g., transmission.
+LASER based models generally move from pure NumPy to Numba-accelerated
+version of the core dynamics, e.g., transmission.
 
-It would be a hassle to re-implement these functions for each desired distribution, so we provide these Numba-wrapped distributions here which can be passed in to other Numba compiled functions.
+It would be a hassle to re-implement these functions for each desired
+distribution, so we provide these Numba-wrapped distributions here which
+can be passed in to other Numba compiled functions.
 
-For example, a simple SIR model may want to parameterize the infectious period using a distribution. By passing in a Numba-wrapped distribution function, we can pick and parameterize a distribution based on configuration and sample from that distribution within the Numba-compiled SIR model without needing to re-implement the distribution logic within the SIR model itself.
+For example, a simple SIR model may want to parameterize the infectious
+period using a distribution. By passing in a Numba-wrapped distribution
+function, we can pick and parameterize a distribution based on
+configuration and sample from that distribution within the Numba-compiled
+SIR model without needing to re-implement the distribution logic within
+the SIR model itself.
 
 A simple example of usage::
 
@@ -18,40 +26,41 @@ A simple example of usage::
     # so the transmission component can sample from it during simulation
     model.infectious_period_dist = beta_dist
 
-Note that the distribution functions take two parameters, `tick` and `node`, which are
-currently unused but match the desired signature for disease model components that may
-need to sample from distributions based on the current simulation tick or node index.
-I.e., distributions with spatial or temporal variation could be implemented in the future.
+Note that the distribution functions take two parameters, ``tick`` and
+``node``, which are currently unused but match the desired signature for
+disease model components that may need to sample from distributions
+based on the current simulation tick or node index. In other words,
+distributions with spatial or temporal variation could be implemented in
+the future.
 
-Here are examples of Numba-wrapped distribution functions that could vary based on tick and tick + node::
+Here are examples of Numba-wrapped distribution functions that could vary
+based on tick or tick + node::
 
-# temporal variation only
-cosine = np.cos(np.linspace(0, np.pi * 2, 365))
+    # temporal variation only
+    cosine = np.cos(np.linspace(0, np.pi * 2, 365))
 
-@nb.njit(nogil=True, cache=True)
-def seasonal_distribution(tick: int, node: int) -> np.float32:
-    # ignore node for this seasonal distribution
-    day_of_year = tick % 365
-    base_value = 42.0 + 3.14159 * cosine[day_of_year]
-    # parameterize normal() with seasonal factor
-    return np.float32(np.random.normal(base_value, 2.0))
+    @nb.njit(nogil=True, cache=True)
+    def seasonal_distribution(tick: int, node: int) -> np.float32:
+        # ignore node for this seasonal distribution
+        day_of_year = tick % 365
+        base_value = 42.0 + 3.14159 * cosine[day_of_year]
+        # parameterize normal() with seasonal factor
+        return np.float32(np.random.normal(base_value, 2.0))
 
-# additional spatial variation
-ramp = np.linspace(0, 2, 42)
+    # additional spatial variation
+    ramp = np.linspace(0, 2, 42)
 
-@nb.njit(nogil=True, cache=True)
-def ramped_distribution(tick: int, node: int) -> np.float32:
-    day_of_year = tick % 365
-    # use seasonal factor
-    base_value = 42.0 + 3.14159 * cosine[day_of_year]
-    # apply spatial ramp based on node index
-    base_value *= ramp[node]
-    # parameterize normal() with seasonal + spatial factor
-    return np.float32(np.random.normal(base_value, 1.0))
+    @nb.njit(nogil=True, cache=True)
+    def ramped_distribution(tick: int, node: int) -> np.float32:
+        day_of_year = tick % 365
+        base_value = 42.0 + 3.14159 * cosine[day_of_year]
+        base_value *= ramp[node]
+        return np.float32(np.random.normal(base_value, 1.0))
 
-Normally, these distributions - built in or custom - will be used once per agent as above.
-However, the `sample_ints()` and `sample_floats()` functions can be used to efficiently sample large arrays
-using multiple CPU cores in parallel.
+Normally, these distributions—built in or custom—will be used once per
+agent as above. However, the ``sample_ints()`` and ``sample_floats()``
+functions can be used to efficiently sample large arrays using multiple
+CPU cores in parallel.
 """
 
 from functools import lru_cache

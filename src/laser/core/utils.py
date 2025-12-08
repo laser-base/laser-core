@@ -18,12 +18,15 @@ from shapely.geometry import Polygon
 def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
     """
     Estimate the required capacity (number of agents) to model a population given birthrates over time.
+
     Args:
+
         birthrates (np.ndarray): 2D array of shape (nsteps, nnodes) representing birthrates (CBR) per 1,000 individuals per year.
         initial_pop (np.ndarray): 1D array of length nnodes representing the initial population at each node.
         safety_factor (float): Safety factor to account for variability in population growth. Default is 1.0.
 
     Returns:
+
         np.ndarray: 1D array of length nnodes representing the estimated required capacity (number of agents) at each node.
     """
     # Validate birthrates shape against initial_pop shape

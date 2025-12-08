@@ -1,5 +1,5 @@
 laser.core
-====
+==========
 
 .. toctree::
    :maxdepth: 4

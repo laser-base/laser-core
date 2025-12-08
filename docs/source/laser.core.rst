@@ -21,7 +21,7 @@ laser.core.cli module
    :undoc-members:
 
 laser.core.distributions module
------------------------------
+-------------------------------
 
 .. automodule:: laser.core.distributions
    :members:

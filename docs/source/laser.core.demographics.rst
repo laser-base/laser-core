@@ -5,7 +5,7 @@ Submodules
 ----------
 
 laser.core.demographics.kmestimator module
-------------------------------------
+------------------------------------------
 
 .. automodule:: laser.core.demographics.kmestimator
    :members:
@@ -13,7 +13,7 @@ laser.core.demographics.kmestimator module
    :undoc-members:
 
 laser.core.demographics.pyramid module
---------------------------------
+--------------------------------------
 
 .. automodule:: laser.core.demographics.pyramid
    :members:
@@ -21,7 +21,7 @@ laser.core.demographics.pyramid module
    :undoc-members:
 
 laser.core.demographics.spatialpops module
-------------------------------------
+------------------------------------------
 
 .. automodule:: laser.core.demographics.spatialpops
    :members:
