@@ -10,6 +10,8 @@ Functions:
 
 """
 
+from typing import Union
+
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
@@ -64,9 +66,11 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     return estimates
 
 
-def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origin_y=0):
+def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origin_y=0, states=None):
     """
     Create an MxN grid of cells anchored at (lat, long) with populations and geometries.
+
+    By default all nodes are initialized with the full population in the first state (e.g., "S" for susceptible).
 
     Args:
         M (int): Number of rows (north-south).
@@ -75,6 +79,7 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
         population_fn (callable): Function(row, col) returning population for a cell. Default is uniform random between 1,000 and 100,000.
         origin_x (float): longitude of the origin in decimal degrees (bottom-left corner) -180 <= origin_x < 180.
         origin_y (float): latitude of the origin in decimal degrees (bottom-left corner) -90 <= origin_y < 90.
+        states (list): List of state names to initialize in the GeoDataFrame. Default is ["S", "E", "I", "R"].
 
     Returns:
         scenario (GeoDataFrame): Columns are nodeid, population, geometry.
@@ -97,6 +102,8 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
 
         def population_fn(row: int, col: int) -> int:
             return int(np.random.uniform(1_000, 100_000))
+
+    states = states or ["S", "E", "I", "R"]
 
     cells = []
     nodeid = 0
@@ -123,5 +130,77 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
             nodeid += 1
 
     gdf = gpd.GeoDataFrame(cells, columns=["nodeid", "population", "geometry"], crs="EPSG:4326")
+    for state in states:
+        gdf[state] = 0
+    gdf[states[0]] = gdf.population  # All state[0] (susceptible?) by default
 
     return gdf
+
+
+def initialize_population(grid, initial: Union[list, np.ndarray], states=None):
+    """
+    Initialize the population states in the grid based on the initial state counts provided.
+
+    Provide integer values to set the exact counts for each state at each node.
+    Alternatively, provide fractional values between 0.0 and 1.0 to set proportions of the population for each state at each node.
+    In the latter case, the first state in the states list will be computed as the remainder of the population after assigning the other states.
+
+    Args:
+        grid (GeoDataFrame): The grid GeoDataFrame with population and state columns.
+        initial (list or np.ndarray): A list or array of shape (nnodes, nstates) representing the initial counts for each state at each node.
+        states (list): List of state names corresponding to the columns in the grid. Default is ["S", "E", "I", "R"].
+
+    Returns:
+        GeoDataFrame: The updated grid with initialized population states.
+    """
+
+    states = states or ["S", "E", "I", "R"]
+
+    nnodes = len(grid)
+    nstates = len(states)
+
+    if isinstance(initial, list):
+        initial = np.array(initial)
+
+    if len(initial.shape) != 2:
+        raise ValueError(f"Initial state array must be 2D, got shape {initial.shape}")
+
+    if initial.shape[0] == 1:
+        # Broadcast single row to all nodes
+        initial = np.broadcast_to(initial, (nnodes, nstates))
+
+    if initial.shape != (nnodes, nstates):
+        raise ValueError(f"Initial state array shape {initial.shape} does not match expected shape ({nnodes}, {nstates})")
+
+    # If all values are integral values, use them as counts
+    total = np.zeros((nnodes,), dtype=np.int32)
+    if np.all(np.mod(initial, 1) == 0):
+        initial = initial.astype(np.int32)
+        for index, state in enumerate(states):
+            grid[state] = initial[:, index]
+            total += initial[:, index]
+        assert np.all(total == grid.population), "Sum of initial states does not equal population at some nodes"
+
+    elif np.all((initial >= 0.0) & (initial <= 1.0)):
+        # If any rows sum to > 1.0, raise error
+        row_sums = initial.sum(axis=1)
+        if np.any(row_sums > 1.0):
+            raise ValueError("Initial state proportions sum to more than 1.0 at some nodes")
+
+        # Handle fractional values as proportions
+        for index, state in enumerate(states):
+            if index == 0:
+                continue  # Susceptible will be computed as remainder
+            grid[state] = np.round(initial[:, index] * grid.population).astype(np.int32)
+            total += grid[state]
+
+        grid[states[0]] = grid.population - total
+
+        # Double check no negatives in the remainder state.
+        if np.any(grid[states[0]] < 0):
+            raise ValueError(f"Computed {states[0]} counts are negative at some nodes")
+
+    else:
+        raise ValueError("Initial state array must contain either all integer counts or all proportions between 0.0 and 1.0")
+
+    return grid
