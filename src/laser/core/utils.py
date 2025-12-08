@@ -77,7 +77,7 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
         origin_y (float): latitude of the origin in decimal degrees (bottom-left corner) -90 <= origin_y < 90.
 
     Returns:
-        GeoDataFrame: Columns are nodeid, population, geometry.
+        scenario (GeoDataFrame): Columns are nodeid, population, geometry.
     """
 
     if M < 1:

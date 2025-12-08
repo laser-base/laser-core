@@ -52,14 +52,11 @@ class LaserFrame:
                             Must be a positive integer.
             initial_count (int): The initial number of active elements in the frame.
                                  Must be a positive integer <= capacity.
-            **kwargs: Additional keyword arguments to set as attributes of the object.
+            **kwargs (tuple): Additional keyword arguments to set as attributes of the object.
 
         Raises:
             ValueError: If capacity or initial_count is not a positive integer,
                         or if initial_count is greater than capacity.
-
-        Returns:
-            None
         """
         if not isinstance(capacity, (int, np.integer)) or capacity <= 0:
             raise ValueError(f"Capacity must be a positive integer, got {capacity}.")
@@ -290,9 +287,9 @@ class LaserFrame:
         Save this LaserFrame and optional extras to an HDF5 snapshot file.
 
         Parameters:
-            path: Destination file path
-            results_r: Optional 2D numpy array of recovered counts
-            pars: Optional PropertySet or dict of parameters
+            path (Path): Destination file path
+            results_r (np.ndarray): Optional 2D numpy array of recovered counts
+            pars (PropertySet or dict): Optional PropertySet or dict of parameters
         """
         from laser.core.propertyset import PropertySet  # to avoid circular import
 
@@ -343,9 +340,9 @@ class LaserFrame:
             nt (int): Simulation duration (number of ticks).
 
         Returns:
-            frame (LaserFrame)
-            results_r (np.ndarray or None)
-            pars (dict or None)
+            frame (LaserFrame): Loaded LaserFrame object.
+            results_r (np.ndarray or None): Optional 2D numpy array of recovered counts.
+            pars (dict or None): Optional dictionary of parameters.
         """
 
         with h5py.File(path, "r") as f:
@@ -400,7 +397,7 @@ class LaserFrame:
         Return a formatted string description of the laserframe object, including its attributes and their values.
 
         Args:
-            target: Optional string for the report header (generally the name of the LaserFrame variable, e.g., "People". Unlike functions, we can't get the name of a variable automatically).
+            target (string): Optional string for the report header (generally the name of the LaserFrame variable, e.g., "People". Unlike functions, we can't get the name of a variable automatically).
 
         Returns:
             str: A formatted string describing the laserframe object, including its capacity, count, and

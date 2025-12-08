@@ -30,9 +30,7 @@ class KaplanMeierEstimator:
         Initializes the KMEstimator with the given source data.
 
         Parameters:
-            source : Union[np.ndarray, list, Path, str]
-
-                The source data for the KMEstimator. It can be:
+            source (np.ndarray, list, Path, str): The source data for the KMEstimator.
 
                 - A numpy array of unsigned 32-bit integers.
                 - A list of integers.
@@ -40,14 +38,11 @@ class KaplanMeierEstimator:
                 - A string representing the file path.
 
         Raises:
-            - FileNotFoundError
-                If the provided file path does not exist or is not a file.
+            FileNotFoundError: If the provided file path does not exist or is not a file.
 
-            - TypeError
-                If the source type is not one of the accepted types (np.ndarray, list, Path, str).
+            TypeError: If the source type is not one of the accepted types (np.ndarray, list, Path, str).
 
-            - ValueError
-                If the source inputs contain negative values or are not monotonically non-decreasing.
+            ValueError: If the source inputs contain negative values or are not monotonically non-decreasing.
 
         Notes:
             - If the source is a file path, the file should contain comma-separated values with the data in the second column.
