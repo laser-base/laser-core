@@ -55,11 +55,10 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
         a (float): Exponent for the population size of the origin node.
         b (float): Exponent for the population size of the destination node.
         c (float): Exponent for the distance between nodes, controlling how distance impacts flows.
-        \*\*kwargs: Additional keyword arguments (not used in the current implementation).
+        kwargs (dict): Additional keyword arguments (not used in the current implementation).
 
     Returns:
-        numpy.ndarray: A 2D matrix where element network[i, j] corresponds to the flow
-        from node i to node j.
+        network (numpy.ndarray): A 2D matrix representing the interaction network, where each element `network[i, j]` corresponds to the flow from node `i` to node `j`.
 
     Example usage::
 
@@ -116,7 +115,7 @@ def row_normalizer(network, max_rowsum):
         max_rowsum (float): The maximum allowable sum for any row in the network matrix.
 
     Returns:
-        numpy.ndarray: The normalized network matrix where no row sum exceeds the specified maximum value.
+        network (numpy.ndarray): The normalized network matrix where no row sum exceeds the specified maximum value.
     """
 
     # Sanity checks
@@ -171,10 +170,10 @@ def competing_destinations(pops, distances, k, a, b, c, delta, **params):
         b (float): Exponent parameter for populations in the gravity model.
         c (float): Exponent parameter for distances in the gravity model.
         delta (float): Exponent parameter for the competing destinations adjustment.
-        \*\*params: Additional parameters to be passed to the gravity model.
+        params (dict): Additional parameters to be passed to the gravity model.
 
     Returns:
-        numpy.ndarray: Adjusted network matrix based on the competing destinations model.
+        network (numpy.ndarray): Adjusted network matrix based on the competing destinations model.
     """
 
     # Sanity checks
@@ -273,7 +272,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
         \*\*params: Additional parameters (not used in the current implementation).
 
     Returns:
-        numpy.ndarray: A 2D array representing the migration network, where network[i][j] is the migration rate from location i to location j.
+        network (numpy.ndarray): A 2D array representing the migration network, where network[i][j] is the migration rate from location i to location j.
     """
 
     # Sanity checks
@@ -336,10 +335,10 @@ def radiation(pops, distances, k, include_home, **params):
         distances (numpy.ndarray): 2D array of distances between nodes.
         k (float): Scaling factor for the migration rates.
         include_home (bool): Whether to include the home population in the calculations.
-        \*\*params: Additional parameters (currently not used).
+        params (dict): Additional parameters (currently not used).
 
     Returns:
-        numpy.ndarray: 2D array representing the migration network.
+        network (numpy.ndarray): 2D array representing the migration network.
     """
 
     # Sanity checks
@@ -387,7 +386,7 @@ def distance(lat1, lon1, lat2=None, lon2=None):
         lon2 (float): Longitude of the second point(s) in decimal degrees [-180, 180].
 
     Returns:
-        float: The distance between the two points in kilometers.
+        distance (float): The distance between the points in kilometers.
     """
 
     # Sanity checks, part 1

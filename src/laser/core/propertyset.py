@@ -71,7 +71,7 @@ class PropertySet:
         Initialize a PropertySet to manage properties in a dictionary-like structure.
 
         Parameters:
-            *bags : iterable, optional
+            bags (list or tuple or dictionary) : iterable, optional
                 A sequence of key-value pairs (e.g., lists, tuples, dictionaries) to initialize
                 the PropertySet. Keys must be strings, and values can be any type.
         """
@@ -99,9 +99,6 @@ class PropertySet:
 
         Parameters:
             filename (str): The path to the file where the PropertySet will be saved.
-
-        Returns:
-            None
         """
         file = Path(filename)
         with file.open("w") as file:
@@ -117,7 +114,7 @@ class PropertySet:
             key (str): The name of the attribute to retrieve.
 
         Returns:
-            Any: The value of the attribute with the specified key.
+            Any (any): The value of the attribute with the specified key.
 
         Raises:
             AttributeError: If the attribute with the specified key does not exist.
@@ -134,9 +131,6 @@ class PropertySet:
         Parameters:
             key (str): The name of the attribute to set.
             value (any): The value to set for the attribute.
-
-        Returns:
-            None
         """
 
         setattr(self, key, value)
@@ -151,7 +145,7 @@ class PropertySet:
             other (PropertySet): The other PropertySet instance to add.
 
         Returns:
-            PropertySet: A new PropertySet instance that combines the properties of both instances.
+            PropertySet (PropertySet): A new PropertySet instance that combines the properties of both instances.
         """
 
         return PropertySet(self, other)
@@ -170,7 +164,7 @@ class PropertySet:
             other (Union[type(self), dict]): The object or dictionary to add to the current instance.
 
         Returns:
-            self: The updated instance with the new attributes.
+            self (PropertySet): The updated instance with the new attributes.
 
         Raises:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
@@ -192,7 +186,7 @@ class PropertySet:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
-            A new PropertySet with all the values of the first PropertySet with overrides from the second PropertySet.
+            PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with overrides from the second PropertySet.
 
         Raises:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
@@ -212,7 +206,7 @@ class PropertySet:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
-            self: The updated instance with the overrides from other.
+            self (PropertySet): The updated instance with the overrides from other.
 
         Raises:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
@@ -234,7 +228,7 @@ class PropertySet:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
-            A new PropertySet with all the values of the first PropertySet with new or overriding values from the second PropertySet.
+            PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with new or overriding values from the second PropertySet.
 
         Raises:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
@@ -253,7 +247,7 @@ class PropertySet:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
-            self: The updated instance with all the values of self with new or overriding values from other.
+            self (PropertySet): The updated instance with all the values of self with new or overriding values from other.
 
         Raises:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
@@ -273,7 +267,7 @@ class PropertySet:
         __dict__ attribute, which represents the instance's namespace.
 
         Returns:
-            int: The number of attributes in the instance.
+            int (int): The number of attributes in the instance.
         """
 
         return len(self.__dict__)
@@ -313,7 +307,7 @@ class PropertySet:
             key (str): The key to check for existence in the property set.
 
         Returns:
-            bool: True if the key exists in the property set, False otherwise.
+            bool (bool): True if the key exists in the property set, False otherwise.
         """
 
         return key in self.__dict__
@@ -326,7 +320,7 @@ class PropertySet:
             other (PropertySet): The other PropertySet instance to compare.
 
         Returns:
-            bool: True if the two instances are equal, False otherwise.
+            bool (bool): True if the two instances are equal, False otherwise.
         """
 
         return self.to_dict() == other.to_dict()
@@ -340,7 +334,7 @@ class PropertySet:
             filename (str): The path to the file where the PropertySet is saved.
 
         Returns:
-            PropertySet: The PropertySet instance loaded from the file.
+            PropertySet (PropertySet): The PropertySet instance loaded from the file.
         """
         with Path(filename).open("r") as file:
             data = json.load(file)

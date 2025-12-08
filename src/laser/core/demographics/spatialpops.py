@@ -22,9 +22,7 @@ def distribute_population_skewed(tot_pop, num_nodes, frac_rural=0.3):
             node and has (1 - frac_rural) of the population.
 
     Returns:
-        list of int
-            A list of integers representing the population at each node. The sum
-            of the list equals `tot_pop`.
+        list[int]: A list of integers representing the population at each node. The sum of the list equals `tot_pop`.
 
     Notes:
         - The population distribution is weighted using an exponential random
@@ -90,7 +88,7 @@ def distribute_population_tapered(tot_pop, num_nodes):
         num_nodes (int): The number of nodes to distribute the population across. Must be a positive integer.
 
     Returns:
-        numpy.ndarray: A 1D array of integers where each element represents the population assigned
+        ndarray (numpy.ndarray): A 1D array of integers where each element represents the population assigned
             to a specific node. The length of the array is equal to `num_nodes`.
 
     Raises:
