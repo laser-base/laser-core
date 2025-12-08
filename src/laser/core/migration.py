@@ -40,8 +40,9 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
     and distances.
 
     Mathematical formula::
-
-        network_{i,j} = k * (p_i^a * p_j^b) / (distance_{i,j}^c)
+        $$
+        network_{i,j} = k \cdot \frac{p_i^a \cdot p_j^b}{distance_{i,j}^c}
+        $$
 
     As implemented in NumPy::
 
@@ -49,12 +50,12 @@ def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: floa
 
     Parameters:
         pops (numpy.ndarray): 1D array of population sizes for each node.
-        distances (numpy.ndarray): 2D array of distances between nodes. Must be symmetric.
-        k (float): Scaling constant to adjust overall magnitude.
-        a (float): Exponent for the origin node population.
-        b (float): Exponent for the destination node population.
-        c (float): Exponent for distances.
-        **kwargs: Additional keyword arguments (unused).
+        distances (numpy.ndarray): 2D array of distances between nodes. Must be symmetric, with self-distances (diagonal) handled.
+        k (float): Scaling constant to adjust the overall magnitude of interaction flows.
+        a (float): Exponent for the population size of the origin node.
+        b (float): Exponent for the population size of the destination node.
+        c (float): Exponent for the distance between nodes, controlling how distance impacts flows.
+        \*\*kwargs: Additional keyword arguments (not used in the current implementation).
 
     Returns:
         numpy.ndarray: A 2D matrix where element network[i, j] corresponds to the flow
