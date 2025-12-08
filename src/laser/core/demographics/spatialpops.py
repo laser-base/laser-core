@@ -22,7 +22,7 @@ def distribute_population_skewed(tot_pop, num_nodes, frac_rural=0.3):
             node and has (1 - frac_rural) of the population.
 
     Returns:
-        list[int]: A list of integers representing the population at each node. The sum of the list equals `tot_pop`.
+        (list[int]): A list of integers representing the population at each node. The sum of the list equals `tot_pop`.
 
     Notes:
         - The population distribution is weighted using an exponential random

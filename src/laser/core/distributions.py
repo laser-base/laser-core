@@ -302,24 +302,14 @@ def sample_floats(fn, dest, tick=0, node=0):
     """
     Fill an array with floating point values sampled from a Numba-wrapped distribution function.
 
-    Parameters
-    ----------
-    fn : function
-        Numba-wrapped distribution function returning float32 values.
+    Args:
+        fn (function): Numba-wrapped distribution function returning float32 values.
+        dest (np.ndarray): Pre-allocated destination float32 array to store samples.
+        tick (int, optional): Current simulation tick (default is 0). Passed through to the distribution function.
+        node (int, optional): Current node index (default is 0). Passed through to the distribution function.
 
-    dest : np.ndarray
-        Pre-allocated destination float32 array to store samples.
-
-    tick : int, optional
-        Current simulation tick (default is 0). Passed through to the distribution function.
-
-    node : int, optional
-        Current node index (default is 0). Passed through to the distribution function.
-
-    Returns
-    -------
-    np.ndarray
-        The destination array filled with sampled values.
+    Returns:
+        (np.ndarray): The destination array filled with sampled values.
     """
     count = dest.shape[0]
     for i in nb.prange(count):
@@ -332,24 +322,14 @@ def sample_ints(fn, dest, tick=0, node=0):
     """
     Fill an array with integer values sampled from a Numba-wrapped distribution function.
 
-    Parameters
-    ----------
-    fn : function
-        Numba-wrapped distribution function returning int32 values.
+    Args:
+        fn (function): Numba-wrapped distribution function returning int32 values.
+        dest (np.ndarray): Pre-allocated destination int32 array to store samples.
+        tick (int, optional): Current simulation tick (default is 0). Passed through to the distribution function.
+        node (int, optional): Current node index (default is 0). Passed through to the distribution function.
 
-    dest : np.ndarray
-        Pre-allocated destination int32 array to store samples.
-
-    tick : int, optional
-        Current simulation tick (default is 0). Passed through to the distribution function.
-
-    node : int, optional
-        Current node index (default is 0). Passed through to the distribution function.
-
-    Returns
-    -------
-    np.ndarray
-        The destination array filled with sampled values.
+    Returns:
+        (np.ndarray): The destination array filled with sampled values.
     """
     count = dest.shape[0]
     for i in nb.prange(count):

@@ -264,7 +264,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
     Parameters:
 
         pops (numpy.ndarray): An array of population sizes.
-        distances (numpy.ndarray): A 2D array where distances[i][j] is the distance from location i to location j.
+        distances (numpy.ndarray): A 2D array where `distances[i][j]` is the distance from location i to location j.
         k (float): A scaling factor for the migration rates.
         a (float): Exponent applied to the population size of the origin.
         b (float): Exponent applied to the ratio of destination population to the sum of all populations at equal or lesser distances.
@@ -272,7 +272,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
         \*\*params: Additional parameters (not used in the current implementation).
 
     Returns:
-        network (numpy.ndarray): A 2D array representing the migration network, where network[i][j] is the migration rate from location i to location j.
+        network (numpy.ndarray): A 2D array representing the migration network, where `network[i][j]` is the migration rate from location i to location j.
     """
 
     # Sanity checks
