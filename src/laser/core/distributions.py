@@ -39,8 +39,11 @@ Here are examples of Numba-wrapped distribution functions that could vary based 
     @nb.njit(nogil=True, cache=True)
     def ramped_distribution(tick: int, node: int) -> np.float32:
         day_of_year = tick % 365
+        # use seasonal factor
         base_value = 42.0 + 3.14159 * cosine[day_of_year]
+        # apply spatial ramp based on node index
         base_value *= ramp[node]
+        # parameterize normal() with seasonal + spatial factor
         return np.float32(np.random.normal(base_value, 1.0))
 
 Normally, these distributions—built in or custom—will be used once per agent as above. However, the ``sample_ints()`` and ``sample_floats()`` functions can be used to efficiently sample large arrays using multiple CPU cores in parallel.
@@ -57,8 +60,10 @@ import numpy as np
 def beta(a, b):
     r"""
     Beta distribution.
-    $$f(x; a, b) = \\frac {x^{a-1} (1-x)^{b-1}} {B(a, b)}$$
-    where B(a, b) is the beta function.
+
+    $f(x; a, b) = \frac {x^{a-1} (1-x)^{b-1}} {B(a, b)}$
+
+    where $B(a, b)$ is the beta function.
     """
 
     @nb.njit(nogil=True)
@@ -73,8 +78,10 @@ def beta(a, b):
 def binomial(n, p):
     r"""
     Binomial distribution.
-    $$f(k,n,p) = Pr(X = k) = \\binom {n} {k} p^k (1-p)^{n-k}$$
-    where *n* is the number of trials and *p* is the probability of success [0, 1].
+
+    $f(k,n,p) = Pr(X = k) = \binom {n} {k} p^k (1-p)^{n-k}$
+
+    where $n$ is the number of trials and $p$ is the probability of success [0, 1].
     """
 
     @nb.njit(nogil=True)
@@ -117,8 +124,10 @@ def constant_int(value):
 def exponential(scale):
     r"""
     Exponential distribution.
-    $$f(x; \\frac {1} {\\beta}) = \\frac {1} {\\beta} e^{-\\frac {x} {\\beta}}$$
-    where *β* is the scale parameter (β = 1 / λ).
+
+    $f(x; \frac {1} {\beta}) = \frac {1} {\beta} e^{-\frac {x} {\beta}}$
+
+    where $\beta$ is the scale parameter ($\beta = 1 / \lambda$).
     """
 
     @nb.njit(nogil=True)
@@ -133,8 +142,10 @@ def exponential(scale):
 def gamma(shape, scale):
     r"""
     Gamma distribution.
-    $$p(x) = x^{k-1} \\frac {e^{- x / \\theta}}{\\theta^k \\Gamma(k)}$$
-    where *k* is the shape, *θ* is the scale, and *Γ(k)* is the gamma function.
+
+    $p(x) = x^{k-1} \frac {e^{- x / \theta}}{\theta^k \Gamma(k)}$
+
+    where $k$ is the shape, $\theta$ is the scale, and $\Gamma(k)$ is the gamma function.
     """
 
     @nb.njit(nogil=True)
@@ -149,8 +160,10 @@ def gamma(shape, scale):
 def logistic(loc, scale):
     r"""
     Logistic distribution.
-    $$P(x) = \\frac {e^{-(x - \\mu) / s}} {s (1 + e^{-(x - \\mu) / s})^2}$$
-    where *μ* is the location parameter and *s* is the scale parameter.
+
+    $P(x) = \frac {e^{-(x - \mu) / s}} {s (1 + e^{-(x - \mu) / s})^2}$
+
+    where $\mu$ is the location parameter and $s$ is the scale parameter.
     """
 
     @nb.njit(nogil=True)
@@ -165,8 +178,10 @@ def logistic(loc, scale):
 def lognormal(mean, sigma):
     r"""
     Log-normal distribution.
-    $$p(x) = \\frac {1} {\\sigma x \\sqrt {2 \\pi}} e^{- \\frac {(\ln x - \\mu)^2} {2 \\sigma^2}}$$
-    where *μ* is the mean and *σ* is the standard deviation of the underlying normal distribution.
+
+    $p(x) = \frac {1} {\sigma x \sqrt {2 \pi}} e^{- \frac {(\ln x - \mu)^2} {2 \sigma^2}}$
+
+    where $\mu$ is the mean and $\sigma$ is the standard deviation of the underlying normal distribution.
     """
 
     @nb.njit(nogil=True)
@@ -191,10 +206,14 @@ def lognormal(mean, sigma):
 def negative_binomial(n, p):
     r"""
     Negative binomial distribution.
-    $$P(N; n, p) = \\frac {\\Gamma (N + n)} {N! \\Gamma (n)} p^n (1 - p)^N$$
-    where *n* is the number of successes, *p* is the probability of success on each trial, *N + n* is the number of trials, and *Γ()* is the gamma function.
-    When *n* is an integer,
-    $$\\frac {\\Gamma (N + n)} {N! \\Gamma (n)} = \\binom {N + n - 1} {n - 1}$$
+
+    $P(N; n, p) = \frac {\Gamma (N + n)} {N! \Gamma (n)} p^n (1 - p)^N$
+
+    where $n$ is the number of successes, $p$ is the probability of success on each trial, $N + n$ is the number of trials, and $\Gamma()$ is the gamma function.
+    When $n$ is an integer,
+
+    $\frac {\Gamma (N + n)} {N! \Gamma (n)} = \binom {N + n - 1} {n - 1}$
+
     which is the more common form of this term.
     """
 
@@ -210,8 +229,10 @@ def negative_binomial(n, p):
 def normal(loc, scale):
     r"""
     Normal (Gaussian) distribution.
-    $$p(x) = \\frac {1} {\\sqrt {2 \\pi \\sigma^2}} e^{- \\frac {(x - \\mu)^2} {2 \\sigma^2}}$$
-    where *μ* is the mean and *σ* is the standard deviation.
+
+    $p(x) = \frac {1} {\sqrt {2 \pi \sigma^2}} e^{- \frac {(x - \mu)^2} {2 \sigma^2}}$
+
+    where $\mu$ is the mean and $\sigma$ is the standard deviation.
     """
 
     @nb.njit(nogil=True)
@@ -226,8 +247,10 @@ def normal(loc, scale):
 def poisson(lam):
     r"""
     Poisson distribution.
-    $$f( k ; \\lambda ) = \\frac {\\lambda^k e^{- \\lambda}} {k!}$$
-    where *λ* is the expected number of events in the given interval.
+
+    $f( k ; \lambda ) = \frac {\lambda^k e^{- \lambda}} {k!}$
+
+    where $\lambda$ is the expected number of events in the given interval.
     """
 
     @nb.njit(nogil=True)
@@ -242,8 +265,10 @@ def poisson(lam):
 def uniform(low, high):
     r"""
     Uniform distribution.
-    $$p(x) = \\frac {1} {b - a}$$
-    where *a* is the lower bound and *b* is the upper bound, [*a*, *b*).
+
+    $p(x) = \frac {1} {b - a}$
+
+    where $a$ is the lower bound and $b$ is the upper bound, [$a$, $b$).
     """
 
     @nb.njit(nogil=True)
@@ -258,8 +283,10 @@ def uniform(low, high):
 def weibull(a, lam):
     r"""
     Weibull distribution.
-    $$X = \\lambda (- \\ln ( U ))^{1 / a}$$
-    where *a* is the shape parameter and *λ* is the scale parameter.
+
+    $X = \lambda (- \ln ( U ))^{1 / a}$
+
+    where $a$ is the shape parameter and $\lambda$ is the scale parameter.
     """
 
     @nb.njit(nogil=True)
@@ -279,10 +306,13 @@ def sample_floats(fn, dest, tick=0, node=0):
     ----------
     fn : function
         Numba-wrapped distribution function returning float32 values.
+
     dest : np.ndarray
         Pre-allocated destination float32 array to store samples.
+
     tick : int, optional
         Current simulation tick (default is 0). Passed through to the distribution function.
+
     node : int, optional
         Current node index (default is 0). Passed through to the distribution function.
 
@@ -306,10 +336,13 @@ def sample_ints(fn, dest, tick=0, node=0):
     ----------
     fn : function
         Numba-wrapped distribution function returning int32 values.
+
     dest : np.ndarray
         Pre-allocated destination int32 array to store samples.
+
     tick : int, optional
         Current simulation tick (default is 0). Passed through to the distribution function.
+
     node : int, optional
         Current node index (default is 0). Passed through to the distribution function.
 
