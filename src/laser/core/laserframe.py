@@ -52,7 +52,7 @@ class LaserFrame:
                             Must be a positive integer.
             initial_count (int): The initial number of active elements in the frame.
                                  Must be a positive integer <= capacity.
-            **kwargs (tuple): Additional keyword arguments to set as attributes of the object.
+            **kwargs (dict): Additional keyword arguments to set as attributes of the object.
 
         Raises:
             ValueError: If capacity or initial_count is not a positive integer,

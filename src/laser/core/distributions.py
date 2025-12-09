@@ -309,7 +309,7 @@ def sample_floats(fn, dest, tick=0, node=0):
         node (int, optional): Current node index (default is 0). Passed through to the distribution function.
 
     Returns:
-        (np.ndarray): The destination array filled with sampled values.
+        dest (np.ndarray): The destination array filled with sampled values.
     """
     count = dest.shape[0]
     for i in nb.prange(count):
@@ -329,7 +329,7 @@ def sample_ints(fn, dest, tick=0, node=0):
         node (int, optional): Current node index (default is 0). Passed through to the distribution function.
 
     Returns:
-        (np.ndarray): The destination array filled with sampled values.
+        dest (np.ndarray): The destination array filled with sampled values.
     """
     count = dest.shape[0]
     for i in nb.prange(count):
