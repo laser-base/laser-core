@@ -437,6 +437,11 @@ class TestPropertySet(unittest.TestCase):
         assert ps.a == 1
         assert ps.b == 2
 
+    def test_init_with_unsupported_type(self):
+        """Test initialization with an unsupported type (e.g., string) raises TypeError."""
+        with pytest.raises(TypeError, match="Unsupported type 'str' for PropertySet initialization"):
+            PropertySet("not a valid bag")
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

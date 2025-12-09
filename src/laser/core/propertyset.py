@@ -11,63 +11,64 @@ class PropertySet:
     Examples
     --------
     Basic Initialization:
-        >>> from laser.core import PropertySet
-        >>> ps = PropertySet()
-        >>> ps['infection_status'] = 'infected'
-        >>> ps['age'] = 35
-        >>> print(ps.infection_status)  # Outputs: 'infected'
-        >>> print(ps['age'])            # Outputs: 35
-        ```
-        Combining two PropertySets:
-        ```
-        >>> ps1 = PropertySet({'immunity': 'high', 'region': 'north'})
-        >>> ps2 = PropertySet({'infectivity': 0.7})
-        >>> combined_ps = ps1 + ps2
-        >>> print(combined_ps.to_dict())
-        {'immunity': 'high', 'region': 'north', 'infectivity': 0.7}
-        ```
-        Creating a PropertySet from a dictionary:
-        ```
-        >>> ps = PropertySet({'mything': 0.4, 'that_other_thing': 42})
-        >>> print(ps.mything)            # Outputs: 0.4
-        >>> print(ps.that_other_thing)   # Outputs: 42
-        >>> print(ps.to_dict())
-        {'mything': 0.4, 'that_other_thing': 42}
-        ```
-        Save and load:
-        ```
-        >>> ps.save('properties.json')
-        >>> loaded_ps = PropertySet.load('properties.json')
-        >>> print(loaded_ps.to_dict())  # Outputs the saved properties
-        ```
-        Property access and length:
-        ```
-        >>> ps['status'] = 'susceptible'
-        >>> ps['exposure_timer'] = 5
-        >>> print(ps['status'])          # Outputs: 'susceptible'
-        >>> print(len(ps))               # Outputs: 4
-        ```
-        In-Place addition (added keys must *not* exist in the destination PropertySet):
-        ```
-        >>> ps += {'new_timer': 10, 'susceptibility': 0.75}
-        >>> print(ps.to_dict())
-        {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 5, 'new_timer': 10, 'susceptibility': 0.75}
-        ```
-        In-place update (keys *must* already exist in the destination PropertySet):
-        ```
-        >>> ps <<= {'exposure_timer': 10, 'infectivity': 0.8}
-        >>> print(ps.to_dict())
-        {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 10, 'infectivity': 0.8}
-        ```
-        In-place addition or update (no restriction on incoming keys):
-        ```
-        >>> ps |= {'new_timer': 10, 'exposure_timer': 8}
-        >>> print(ps.to_dict())
-        {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
-        ```
+
+        from laser.core import PropertySet
+        ps = PropertySet()
+        ps['infection_status'] = 'infected'
+        ps['age'] = 35
+        print(ps.infection_status)  # Outputs: 'infected'
+        print(ps['age'])            # Outputs: 35
+
+    Combining two PropertySets:
+
+        ps1 = PropertySet({'immunity': 'high', 'region': 'north'})
+        ps2 = PropertySet({'infectivity': 0.7})
+        combined_ps = ps1 + ps2
+        print(combined_ps.to_dict())
+        # Outputs: {'immunity': 'high', 'region': 'north', 'infectivity': 0.7}
+
+    Creating a PropertySet from a dictionary:
+
+        ps = PropertySet({'mything': 0.4, 'that_other_thing': 42})
+        print(ps.mything)            # Outputs: 0.4
+        print(ps.that_other_thing)   # Outputs: 42
+        print(ps.to_dict())
+        # Outputs: {'mything': 0.4, 'that_other_thing': 42}
+
+    Save and load:
+
+        ps.save('properties.json')
+        loaded_ps = PropertySet.load('properties.json')
+        print(loaded_ps.to_dict())  # Outputs the saved properties
+
+    Property access and length:
+
+        ps['status'] = 'susceptible'
+        ps['exposure_timer'] = 5
+        print(ps['status'])          # Outputs: 'susceptible'
+        print(len(ps))               # Outputs: 4
+
+    In-Place addition (added keys must *not* exist in the destination PropertySet):
+
+        ps += {'new_timer': 10, 'susceptibility': 0.75}
+        print(ps.to_dict())
+        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 5, 'new_timer': 10, 'susceptibility': 0.75}
+
+    In-place update (keys *must* already exist in the destination PropertySet):
+
+        ps <<= {'exposure_timer': 10, 'infectivity': 0.8}
+        print(ps.to_dict())
+        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 10, 'infectivity': 0.8}
+
+    In-place addition or update (no restriction on incoming keys):
+
+        ps |= {'new_timer': 10, 'exposure_timer': 8}
+        print(ps.to_dict())
+        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
+
     """
 
-    def __init__(self, *bags: Union[list, tuple, dict]):
+    def __init__(self, *bags: Union["PropertySet", list, tuple, dict]):
         """
         Initialize a PropertySet to manage properties in a dictionary-like structure.
 
@@ -83,6 +84,10 @@ class PropertySet:
         }
 
         for bag in bags:
+            if type(bag) not in iterator_mapping:
+                raise TypeError(
+                    f"Unsupported type '{type(bag).__name__}' for PropertySet initialization. Expected one of PropertySet, list[tuple], tuple[tuple], or dictionary."
+                )
             it = iterator_mapping[type(bag)](bag)
             for key, value in it:
                 setattr(self, key, value)
