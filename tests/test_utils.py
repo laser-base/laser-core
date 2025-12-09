@@ -338,6 +338,74 @@ class TestGridUtilityFunction(unittest.TestCase):
             gdf2[states].sum(axis=1) == gdf2.population
         ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
 
+    def test_initialize_population_exact_counts_from_list(self):
+        # Test initialize_population with integer counts provided as a Python list
+        M, N = 2, 3
+        states = ["S", "E", "I", "R"]
+        gdf = grid(M=M, N=N, node_size_degs=0.1, population_fn=lambda r, c: 500, states=states)
+        nnodes = M * N
+        # Each node: [S, E, I, R] = [400, 50, 30, 20]
+        initial = [[400, 50, 30, 20] for _ in range(nnodes)]
+        gdf2 = initialize_population(gdf.copy(), initial, states=states)
+        for idx, state in enumerate(states):
+            assert np.all(gdf2[state] == initial[0][idx]), f"State {state} not set correctly from list"
+        assert np.all(gdf2[states].sum(axis=1) == gdf2.population), "Sum of states does not equal population"
+
+    def test_initialize_population_fractions_from_list(self):
+        # Test initialize_population with fractional values provided as a Python list
+        M, N = 2, 2
+        states = ["S", "E", "I", "R"]
+        gdf = grid(M=M, N=N, node_size_degs=0.1, population_fn=lambda r, c: 1000, states=states)
+        nnodes = M * N
+        # Fractions: [S, E, I, R] = [computed, 0.15, 0.25, 0.35]
+        fractions = [[0.0, 0.15, 0.25, 0.35] for _ in range(nnodes)]
+        gdf2 = initialize_population(gdf.copy(), fractions, states=states)
+        expected_E = np.round(0.15 * 1000).astype(int)
+        expected_I = np.round(0.25 * 1000).astype(int)
+        expected_R = np.round(0.35 * 1000).astype(int)
+        expected_S = 1000 - (expected_E + expected_I + expected_R)
+        assert np.all(gdf2["E"] == expected_E), f"Expected E={expected_E}, got {gdf2['E']}"
+        assert np.all(gdf2["I"] == expected_I), f"Expected I={expected_I}, got {gdf2['I']}"
+        assert np.all(gdf2["R"] == expected_R), f"Expected R={expected_R}, got {gdf2['R']}"
+        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}, got {gdf2['S']}"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
+
+    def test_initialize_population_single_node_exact_counts(self):
+        # Test initialize_population with a single node's integer counts (should broadcast)
+        M, N = 3, 3
+        states = ["S", "E", "I", "R"]
+        gdf = grid(M=M, N=N, node_size_degs=0.1, population_fn=lambda r, c: 200, states=states)
+        # Provide a single node's values: [150, 30, 10, 10]
+        initial = [150, 30, 10, 10]
+        gdf2 = initialize_population(gdf.copy(), initial, states=states)
+        for idx, state in enumerate(states):
+            assert np.all(gdf2[state] == initial[idx]), f"State {state} not broadcast correctly from single node"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
+
+    def test_initialize_population_single_node_fractions(self):
+        # Test initialize_population with a single node's fractions (should broadcast)
+        M, N = 2, 4
+        states = ["S", "E", "I", "R"]
+        gdf = grid(M=M, N=N, node_size_degs=0.1, population_fn=lambda r, c: 400, states=states)
+        # Provide a single node's fractions: [0.0, 0.1, 0.2, 0.3]
+        fractions = [0.0, 0.1, 0.2, 0.3]
+        gdf2 = initialize_population(gdf.copy(), fractions, states=states)
+        expected_E = np.round(0.1 * 400).astype(int)
+        expected_I = np.round(0.2 * 400).astype(int)
+        expected_R = np.round(0.3 * 400).astype(int)
+        expected_S = 400 - (expected_E + expected_I + expected_R)
+        assert np.all(gdf2["E"] == expected_E), f"Expected E={expected_E}, got {gdf2['E']}"
+        assert np.all(gdf2["I"] == expected_I), f"Expected I={expected_I}, got {gdf2['I']}"
+        assert np.all(gdf2["R"] == expected_R), f"Expected R={expected_R}, got {gdf2['R']}"
+        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}, got {gdf2['S']}"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
+
 
 if __name__ == "__main__":
     unittest.main()
