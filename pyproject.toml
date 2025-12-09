@@ -1,6 +1,6 @@
 [project]
 name = "laser-core"
-version = "0.8.1"
+version = "0.9.0"
 authors = [
   { name="Christopher Lorton", email="christopher.lorton@gatesfoundation.org" },
   { name="Jonathan Bloedow", email="jonathan.bloedow@gatesfoundation.org" },
@@ -137,7 +137,7 @@ where = ["src"]
 "tests" = ["data/*.csv"]
 
 [tool.bumpversion]
-current_version = "0.8.1"
+current_version = "0.9.0"
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
 serialize = ["{major}.{minor}.{patch}"]
 search = "{current_version}"
