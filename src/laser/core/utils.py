@@ -147,7 +147,7 @@ def initialize_population(grid, initial: Union[list, np.ndarray], states=None):
 
     Args:
         grid (GeoDataFrame): The grid GeoDataFrame with population and state columns.
-        initial (list or np.ndarray): A list or array of shape (nnodes, nstates) representing the initial counts for each state at each node.
+        initial (list or np.ndarray): A list or array of shape (1|nnodes, nstates) representing the initial counts for each state at each node. If the shape is (1, nstates), the same initial state distribution will be applied to all nodes.
         states (list): List of state names corresponding to the columns in the grid. Default is ["S", "E", "I", "R"].
 
     Returns:
@@ -162,8 +162,13 @@ def initialize_population(grid, initial: Union[list, np.ndarray], states=None):
     if isinstance(initial, list):
         initial = np.array(initial)
 
-    if len(initial.shape) != 2:
-        raise ValueError(f"Initial state array must be 2D, got shape {initial.shape}")
+    # Convert 1D array to 2D by reshaping to (1, nstates)
+    if len(initial.shape) == 1:
+        if initial.shape[0] != nstates:
+            raise ValueError(f"Initial state array with shape {initial.shape} does not match expected number of states ({nstates})")
+        initial = initial.reshape(1, nstates)
+    elif len(initial.shape) != 2:
+        raise ValueError(f"Initial state array must be 1D or 2D, got shape {initial.shape}")
 
     if initial.shape[0] == 1:
         # Broadcast single row to all nodes
