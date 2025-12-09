@@ -218,10 +218,12 @@ class TestGridUtilityFunction(unittest.TestCase):
         # Test that the default parameters to grid() return a GeoDataFrame with "S", "E", "I", and "R" columns
         gdf = grid()
         assert "S" in gdf.columns, f"Expected column 'S' in GeoDataFrame columns {gdf.columns}"
-        assert np.all(gdf["S"] == gdf.population), f"Expected all values in column 'S' to be equal to population, got {gdf['S'].unique()}"
+        assert np.all(
+            gdf["S"] == gdf.population
+        ), f"Expected all values in column 'S' to equal population,\n{gdf.population}got\n{gdf['S']}"
         for state in ["E", "I", "R"]:
             assert state in gdf.columns, f"Expected column '{state}' in GeoDataFrame columns {gdf.columns}"
-            assert np.all(gdf[state] == 0), f"Expected all values in column '{state}' to be 0, got {gdf[state].unique()}"
+            assert np.all(gdf[state] == 0), f"Expected all values in column '{state}' to be 0, got {gdf[state]}"
         return
 
     def test_grid_custom_states_columns(self):
@@ -231,10 +233,10 @@ class TestGridUtilityFunction(unittest.TestCase):
         assert custom_states[0] in gdf.columns, f"Expected column '{custom_states[0]}' in GeoDataFrame columns {gdf.columns}"
         assert np.all(
             gdf[custom_states[0]] == gdf.population
-        ), f"Expected all values in column '{custom_states[0]}' to be equal to population, got {gdf[custom_states[0]]}"
+        ), f"Expected all values in column '{custom_states[0]}' to be equal to population,\n{gdf.population}got\n{gdf[custom_states[0]]}"
         for state in custom_states[1:]:
             assert state in gdf.columns, f"Expected column '{state}' in GeoDataFrame columns {gdf.columns}"
-            assert np.all(gdf[state] == 0), f"Expected all values in column '{state}' to be 0, got {gdf[state].unique()}"
+            assert np.all(gdf[state] == 0), f"Expected all values in column '{state}' to be 0, got\n{gdf[state]}"
         # Ensure default states are not present
         for default_state in ["S", "E", "I", "R"]:
             assert default_state not in gdf.columns, f"Did not expect column '{default_state}' in GeoDataFrame columns {gdf.columns}"
@@ -262,11 +264,13 @@ class TestGridUtilityFunction(unittest.TestCase):
         gdf2 = initialize_population(gdf.copy(), fractions, states=states)
         # S is computed as the remainder
         expected_S = 1000 - (np.round(0.1 * 1000) + np.round(0.2 * 1000) + np.round(0.3 * 1000))
-        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}, got {gdf2['S'].unique()}"
-        assert np.all(gdf2["E"] == 100), f"Expected E=100, got {gdf2['E'].unique()}"
-        assert np.all(gdf2["I"] == 200), f"Expected I=200, got {gdf2['I'].unique()}"
-        assert np.all(gdf2["R"] == 300), f"Expected R=300, got {gdf2['R'].unique()}"
-        assert np.all(gdf2[states].sum(axis=1) == gdf2.population), "Sum of states does not equal population"
+        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}, got {gdf2['S']}"
+        assert np.all(gdf2["E"] == 100), f"Expected E=100, got {gdf2['E']}"
+        assert np.all(gdf2["I"] == 200), f"Expected I=200, got {gdf2['I']}"
+        assert np.all(gdf2["R"] == 300), f"Expected R=300, got {gdf2['R']}"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
 
     def test_initialize_population_integer_out_of_range(self):
         M, N = 2, 1
@@ -310,7 +314,9 @@ class TestGridUtilityFunction(unittest.TestCase):
         gdf2 = initialize_population(gdf.copy(), initial, states=states)
         for idx, state in enumerate(states):
             assert np.all(gdf2[state] == initial[0, idx]), f"State {state} not broadcast correctly"
-        assert np.all(gdf2[states].sum(axis=1) == gdf2.population), "Sum of states does not equal population"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
 
     def test_initialize_population_single_row_fraction_broadcast(self):
         # Test that a single row of fractional values is broadcast to all nodes
@@ -324,11 +330,13 @@ class TestGridUtilityFunction(unittest.TestCase):
         expected_I = np.round(0.3 * 500).astype(int)
         expected_R = np.round(0.1 * 500).astype(int)
         expected_S = 500 - (expected_E + expected_I + expected_R)
-        assert np.all(gdf2["E"] == expected_E), f"Expected E={expected_E}, got {gdf2['E'].unique()}"
-        assert np.all(gdf2["I"] == expected_I), f"Expected I={expected_I}, got {gdf2['I'].unique()}"
-        assert np.all(gdf2["R"] == expected_R), f"Expected R={expected_R}, got {gdf2['R'].unique()}"
-        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}, got {gdf2['S'].unique()}"
-        assert np.all(gdf2[states].sum(axis=1) == gdf2.population), "Sum of states does not equal population"
+        assert np.all(gdf2["E"] == expected_E), f"Expected E={expected_E}\ngot\n{gdf2['E']}"
+        assert np.all(gdf2["I"] == expected_I), f"Expected I={expected_I}\ngot\n{gdf2['I']}"
+        assert np.all(gdf2["R"] == expected_R), f"Expected R={expected_R}\ngot\n{gdf2['R']}"
+        assert np.all(gdf2["S"] == expected_S), f"Expected S={expected_S}\ngot\n{gdf2['S']}"
+        assert np.all(
+            gdf2[states].sum(axis=1) == gdf2.population
+        ), f"Sum of states\n{gdf2[states].sum(axis=1)}\ndoes not equal population\n{gdf2.population}"
 
 
 if __name__ == "__main__":
