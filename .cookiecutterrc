@@ -54,7 +54,7 @@ default_context:
     sphinx_doctest: "no"
     sphinx_theme: "sphinx-rtd-theme"
     test_matrix_separate_coverage: "no"
-    version: "0.9.1"
+    version: "1.0.0"
     version_manager: "bump2version"
     website: "https://www.idmod.org"
     year_from: "2023"
