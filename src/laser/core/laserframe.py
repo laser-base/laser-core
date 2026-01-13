@@ -329,13 +329,12 @@ class LaserFrame:
                 group.attrs[key] = str(value)
 
     @classmethod
-    def load_snapshot(cls, path, n_ppl, cbr, nt):
+    def load_snapshot(cls, path, cbr, nt):
         """
         Load a LaserFrame and optional extras from an HDF5 snapshot file.
 
         Args:
             path (str): Path to the HDF5 snapshot file.
-            n_ppl (float or array-like): Original total population (or per-node array) used to estimate births.
             cbr (float or array-like): Crude birth rate (per 1000/year).
             nt (int): Simulation duration (number of ticks).
 
@@ -361,7 +360,11 @@ class LaserFrame:
                 pars = {}
 
             # Compute capacity if values are provided
-            if n_ppl is not None and cbr is not None and nt is not None:
+            if cbr is not None and nt is not None:
+                recovered = f["recovered"][()] if "recovered" in f else None
+                recovered_total = recovered[:, 0].sum() if recovered is not None else 0
+                n_ppl = count + recovered_total
+
                 if isinstance(cbr, (list, np.ndarray)) and len(cbr) > 1:
                     cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
                 else:
