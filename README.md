@@ -28,7 +28,7 @@ However, it may be more instructive to install one of the disease packages built
 
 ### Documentation
 
-Documentation can be found [here](https://laser-base.github.io/laser-generic/) at the moment.
+Documentation can be found [here](https://laser.idmod.org/laser-generic/).
 
 ### Development
 
