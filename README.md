@@ -18,13 +18,33 @@
 
 ## Getting Started
 
-`laser-core` can be installed standalone with
+We recommend using the [LASER documentation](https://laser.idmod.org/laser-core) to familiarize yourself with the LASER disease modeling framework. However, the instructions below may be sufficient for those who want to jump right in.
+
+### Standalone Installation
+
+`laser-core` can be installed standalone with `pip`:
 
 ```bash
 python3 -m pip install laser-core
 ```
 
+or with [`uv`](https://docs.astral.sh/uv/) (recommended):
+
+```bash
+uv pip install laser-core
+```
+
 However, it may be more instructive to install one of the disease packages built on `laser-core` to understand what `laser-core` provides and what is expected to be in a disease model. See [`laser-generic`](https://github.com/laser-base/laser-generic).
+
+### Using `laser-core`
+
+`laser-core` can be used in your code after importing it in your project (**note that while the Python package is `laser-core`, one imports `laser.core`):
+
+```python
+import laser.core as lc
+
+print(lc.__version__)
+```
 
 ### Documentation
 
@@ -34,7 +54,7 @@ Documentation can be found [here](https://laser.idmod.org/laser-generic/).
 
 1. clone the `laser-core` repository with
 ```bash
-git clone https://github.com/InstituteforDiseaseModeling/laser-core.git
+git clone https://github.com/laser-base/laser-core.git
 ```
 2. install [`uv`](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) _in your system [Python]_, i.e. _before_ creating and activating a virtual environment
 3. install `tox` as a tool in `uv` with the `tox-uv` plugin with
@@ -61,36 +81,40 @@ source .venv/bin/activate
 .venv\bin\Activate
 ```
 
-Now you can run tests in the `tests` directory or run the entire check+docs+test suite with ```tox```. Running ```tox``` will run several consistency checks, build documentation, run tests against the supported versions of Python, and create a code coverage report based on the test suite. Note that the first run of ```tox``` may take a few minutes (~5). Subsequent runs should be quicker depending on the speed of your machine and the test suite (~2 minutes). You can use ```tox``` to run tests against a single version of Python with, for example, ```tox -e py310```.
+#### Building Code in Development
 
-## Schedule
+**Option 1: build "live" code** - Python scripts using `laser.core` will import the code directly from the repository clone. Edits to the source code will take effect upon restarting the Python environment and importing `laser.core`.
 
-### First 30 Days (EOY 2023)
+with `pip`:
 
-- [x] firm up team/stakeholders/advisory committee: **kmmcarthy, krosenfeld, clorton, jbloedow**
-- [x] enumerate necessary features for reproducing/supporting previous and in-progress modeling efforts
-  - [Required Model Features](https://github.com/InstituteforDiseaseModeling/laser/wiki/Required-Model-Features)
-- <strike>enumerate necessary features for outstanding questions and issues</strike>
+```bash
+pip install -e ".[dev]"
+```
 
-### First 60 Days (January 31, 2024)
+with `uv`:
 
-- [x] "paper search" / investigate potential existing solutions
+```bash
+uv pip install -e ".[dev]"
+```
 
-### First 120 Days (February 29, 2024)
+**Option 2: build an installable package** - this package must be installed into an environment to be used and changes to the source code on disk will not be picked up by consumers of `laser.core` until the package is rebuilt and reinstalled. However this process mirrors using `laser.core` as a dependency better than the "live code" option above.
 
-- technical considerations
-  - [x] single laptop
-  - [x] single laptop w/Nvidia GPU
-  - [x] multicore
-    - [x] single machine
-    - [x] large machine (cloud)
-    - ¿beyond?
-  - [x] Numpy
-  - [x] NumPy + Numba
-  - [x] NumPy + Numba + C/C++
-  - NumPy + Numba + CUDA
+**Option 2A: build with `pip`**
 
-## Problem Space
+- install the `build` package: `python3 -m pip install build`
+- build the `laser-core` Python packge: `python3 -m build`
+- find the wheel file, `.whl`, in the `dist` directory: `ls -l dist`
+
+**Option 2B: build with `uv`**
+
+- `uv build`
+- find the wheel file, `.whl`, in the `dist` directory: `ls -l dist`
+
+#### Running Tests
+
+Now you can run tests in the `tests` directory or run the entire check+docs+test suite with ```tox```. Running ```tox``` will run several consistency checks, build documentation, run tests against the supported versions of Python, and create a code coverage report based on the test suite. Note that the first run of ```tox``` may take a few minutes (~5). Subsequent runs should be quicker depending on the speed of your machine and the test suite (~2 minutes). You can use ```tox``` to run tests against a single version of Python with, for example, ```tox -e py312```.
+
+## Problem Space for Spatial Disease Modeling
 
 The problem is inherently an issue of heterogeneity. Spatial decomposition is the easiest consideration, but not sufficient - a model of N "independent" but identical communities is generally not useful.
 
@@ -141,7 +165,7 @@ What _is_ the modeling of the individual communities? "Light-Agent" seems to lim
 - "agent" : Cohorts? Stochastic compartmental?
 - "spatial" : How good are the individual community models? Good enough for non-spatial questions?
 - dynamic properties (e.g. GPU flu simulation)
-- ¿Ace/clorton-based state machines?
+- ¿state machines?
 
 > Superficial simplicity isn’t the goal of design. Some things are, by nature, complex. In such cases, you should aim for clarity rather than “simplicity.” Users will be better served if you strive to make complex systems more understandable and learnable than simply simple.
 
