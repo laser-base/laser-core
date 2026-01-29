@@ -38,7 +38,7 @@ However, it may be more instructive to install one of the disease packages built
 
 ### Using `laser-core`
 
-`laser-core` can be used in your code after importing it in your project (**note that while the Python package is `laser-core`, one imports `laser.core`):
+`laser-core` can be used in your code after importing it in your project (**note that while the Python package is `laser-core`, one imports `laser.core`**):
 
 ```python
 import laser.core as lc
@@ -53,22 +53,31 @@ Documentation can be found [here](https://laser.idmod.org/laser-generic/).
 ### Development
 
 1. clone the `laser-core` repository with
+
 ```bash
 git clone https://github.com/laser-base/laser-core.git
 ```
+
 2. install [`uv`](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) _in your system [Python]_, i.e. _before_ creating and activating a virtual environment
+
 3. install `tox` as a tool in `uv` with the `tox-uv` plugin with
+
 ```bash
 uv tool install tox --with tox-uv
 ```
+
 4. change to the `laser-core` directory with
+
 ```bash
 cd laser-core
 ```
+
 5. create a virtual environment for development with
+
 ```bash
 uv venv
 ```
+
 6. activate the virtual environment with
 
 **Mac or Linux:**
