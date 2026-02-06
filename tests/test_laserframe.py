@@ -127,6 +127,89 @@ def test_loaded_capacity_matches_expected_growth(pop_size):
         Path(path).unlink()
 
 
+@pytest.mark.parametrize("pop_size", [100_000])
+@pytest.mark.parametrize("cbr", [
+    35.0,                                    # scalar float
+    np.array([35.0], dtype=np.float32),     # 1D array
+    np.full((365 * 3, 1), 35.0, dtype=np.float32)  # 2D time-series
+])
+def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
+    """
+    Tests that LASER correctly reloads snapshots and recomputes capacity
+    when passed scalar, 1D, or 2D CBR values.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
+        path = tmp.name
+
+    try:
+        nt = 365 * 3
+        ppl = np.array([pop_size])
+
+        # Normalize CBR to 2D shape for calc_capacity
+        if np.isscalar(cbr):
+            birthrates = np.full((nt, 1), cbr, dtype=np.float32)
+            cbr_pass = cbr
+        elif cbr.ndim == 1:
+            birthrates = np.full((nt, 1), cbr[0], dtype=np.float32)
+            cbr_pass = cbr
+        else:
+            birthrates = cbr
+            cbr_pass = cbr
+
+        # Expected capacity from modeled population
+        expected_final = calc_capacity(birthrates=birthrates, initial_pop=ppl).sum()
+        expected_births = expected_final - pop_size
+
+        # Create frame
+        frame = LaserFrame(capacity=int(expected_final), initial_count=pop_size)
+        frame.add_scalar_property("age", dtype=np.int32)
+        frame.add_scalar_property("status", dtype=np.int8)
+
+        # Dummy data
+        np.random.seed(42)
+        frame.age[:] = np.random.randint(0, 90, size=pop_size)
+        frame.status[:] = np.random.choice([0, 1], size=pop_size)
+
+        # Squash
+        mask = (frame.status == 1) | (frame.age > 75)
+        frame.squash(~mask)
+
+        # Save
+        results_r = np.linspace(0, 100, 10, dtype=np.float32).reshape(1, -1)
+        frame.save_snapshot(path, results_r=results_r, pars={})
+
+        # Reload using CBR variant
+        loaded, _, _ = LaserFrame.load_snapshot(path, cbr=cbr_pass, nt=nt)
+
+        # Recompute expected capacity using current modeled count
+        expected_capacity = calc_capacity(
+            birthrates=birthrates,
+            initial_pop=np.array([frame.count])
+        ).sum()
+
+        # Output
+        status = "OK"
+        if loaded.capacity < expected_capacity:
+            status = "UNDER"
+        elif loaded.capacity > expected_capacity * 1.1:
+            status = "OVER"
+        else:
+            status = "EXACT"
+
+        print(
+            f"[CBR={cbr}] modeled={frame.count:,}, "
+            f"expected_births={expected_births:,.0f}, "
+            f"expected_capacity={expected_capacity:,.0f}, "
+            f"loaded={loaded.capacity:,}, status={status}"
+        )
+
+        assert loaded.count == frame.count
+        assert loaded.capacity >= expected_capacity
+        assert loaded.capacity <= expected_capacity * 1.1
+
+    finally:
+        Path(path).unlink()
+
 class TestLaserFrame(unittest.TestCase):
     def test_init(self):
         pop = LaserFrame(1024, initial_count=0)
@@ -608,6 +691,3 @@ class TestLaserFrame(unittest.TestCase):
 
         return
 
-
-if __name__ == "__main__":
-    unittest.main()
