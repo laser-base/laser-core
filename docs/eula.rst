@@ -17,6 +17,11 @@ To address this, LASER supports a **squashing** process. Squashing involves
 less relevant agents (e.g., Recovered) are moved to the end. Though please note that you should
 assume that squashed agent data is overwritten.
 
+.. image:: media/squash_save_load.png
+   :alt: Model output for Nigeria
+   :width: 600px
+   :align: center
+
 Some notes about squashing:
 
 - The population count is adjusted so that all `for` loops and step functions iterate
