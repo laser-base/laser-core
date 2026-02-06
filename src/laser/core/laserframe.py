@@ -366,31 +366,26 @@ class LaserFrame:
                 n_ppl = count + recovered_total
 
                 # Handle different CBR dimensionalities
+                # Note: We don't have per-node population data in snapshots, so we use simple mean
+                # instead of weighted average. For more accurate capacity estimation in multi-node
+                # scenarios, consider saving per-node population data in snapshots.
                 if isinstance(cbr, np.ndarray):
                     if cbr.ndim == 2:
-                        # 2D array: shape (nt, nnodes) - average over time, then weight by population
+                        # 2D array: shape (nt, nnodes) - average over time, then average across nodes
                         cbr_per_node = np.mean(cbr, axis=0)  # Shape: (nnodes,)
-                        if cbr_per_node.size > 1:
-                            cbr_value = np.sum(cbr_per_node * n_ppl) / np.sum(n_ppl)
-                        else:
-                            cbr_value = cbr_per_node[0]
+                        cbr_value = float(np.mean(cbr_per_node))
                     elif cbr.ndim == 1:
-                        # 1D array: shape (nnodes,) - weight by population
-                        if cbr.size > 1:
-                            cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
-                        else:
-                            cbr_value = cbr[0]
+                        # 1D array: shape (nnodes,) - average across nodes
+                        cbr_value = float(np.mean(cbr))
                     else:
                         # 0D array or scalar
                         cbr_value = float(cbr)
                 elif isinstance(cbr, list):
-                    if len(cbr) > 1:
-                        cbr_value = np.sum(np.array(cbr) * n_ppl) / np.sum(n_ppl)
-                    else:
-                        cbr_value = cbr[0]
+                    # List of per-node CBR values - take mean
+                    cbr_value = float(np.mean(cbr))
                 else:
                     # Scalar
-                    cbr_value = cbr
+                    cbr_value = float(cbr)
                 ppl = np.sum(n_ppl)
 
                 estimate = calc_capacity(

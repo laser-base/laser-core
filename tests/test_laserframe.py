@@ -127,12 +127,14 @@ def test_loaded_capacity_matches_expected_growth_multipop(pop_size):
         Path(path).unlink()
 
 
+@pytest.mark.parametrize("nnodes", [1, 3])
 @pytest.mark.parametrize("pop_size", [100_000])
-@pytest.mark.parametrize(
-    "cbr",
-    [35.0, np.array([35.0], dtype=np.float32), np.full((365 * 3, 1), 35.0, dtype=np.float32)],  # scalar float  # 1D array  # 2D time-series
-)
-def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
+@pytest.mark.parametrize("cbr", [
+    35.0,                                    # scalar float
+    np.array([35.0], dtype=np.float32),     # 1D array
+    np.full((365 * 3, 1), 35.0, dtype=np.float32)  # 2D time-series
+])
+def test_loaded_capacity_matches_expected_growth(nnodes, pop_size, cbr): 
     """
     Tests that LASER correctly reloads snapshots and recomputes capacity
     when passed scalar, 1D, or 2D CBR values.
@@ -142,18 +144,30 @@ def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
 
     try:
         nt = 365 * 3
-        ppl = np.array([pop_size])
+        ppl = np.array([pop_size // nnodes] * nnodes)  # Distribute population across nodes
 
         # Normalize CBR to 2D shape for calc_capacity
         if np.isscalar(cbr):
-            birthrates = np.full((nt, 1), cbr, dtype=np.float32)
+            birthrates = np.full((nt, nnodes), cbr, dtype=np.float32)
             cbr_pass = cbr
         elif cbr.ndim == 1:
-            birthrates = np.full((nt, 1), cbr[0], dtype=np.float32)
-            cbr_pass = cbr
+            if cbr.size == 1:
+                # Single CBR value - broadcast to all nodes
+                birthrates = np.full((nt, nnodes), cbr[0], dtype=np.float32)
+                cbr_pass = np.full(nnodes, cbr[0], dtype=np.float32)
+            else:
+                # Already has per-node CBR values
+                birthrates = np.tile(cbr[:, np.newaxis], (nt, 1))
+                cbr_pass = cbr
         else:
-            birthrates = cbr
-            cbr_pass = cbr
+            # 2D time-series
+            if cbr.shape[1] == 1:
+                # Single node - broadcast to nnodes
+                birthrates = np.tile(cbr, (1, nnodes))
+                cbr_pass = np.tile(cbr, (1, nnodes))
+            else:
+                birthrates = cbr
+                cbr_pass = cbr
 
         # Expected capacity from modeled population
         expected_final = calc_capacity(birthrates=birthrates, initial_pop=ppl).sum()
@@ -174,14 +188,19 @@ def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
         frame.squash(~mask)
 
         # Save
-        results_r = np.linspace(0, 100, 10, dtype=np.float32).reshape(1, -1)
+        results_r = np.tile(np.linspace(0, 100, 10, dtype=np.float32), (nnodes, 1))
         frame.save_snapshot(path, results_r=results_r, pars={})
 
         # Reload using CBR variant
         loaded, _, _ = LaserFrame.load_snapshot(path, cbr=cbr_pass, nt=nt)
 
-        # Recompute expected capacity using current modeled count
-        expected_capacity = calc_capacity(birthrates=birthrates, initial_pop=np.array([frame.count])).sum()
+        # Recompute expected capacity using current modeled count 
+        # Since load_snapshot uses mean CBR across nodes, we should too
+        mean_cbr = np.mean(birthrates)
+        expected_capacity = calc_capacity(
+            birthrates=np.full((nt, 1), mean_cbr, dtype=np.float32),
+            initial_pop=np.array([frame.count])
+        ).sum()
 
         # Output
         status = "OK"
@@ -193,7 +212,7 @@ def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
             status = "EXACT"
 
         print(
-            f"[CBR={cbr}] modeled={frame.count:,}, "
+            f"[nnodes={nnodes}, CBR type={type(cbr).__name__}] modeled={frame.count:,}, "
             f"expected_births={expected_births:,.0f}, "
             f"expected_capacity={expected_capacity:,.0f}, "
             f"loaded={loaded.capacity:,}, status={status}"
