@@ -50,7 +50,7 @@ from laser.core.utils import calc_capacity
 
 
 @pytest.mark.parametrize("pop_size", [10_000, 100_000, 1_000_000, 10_000_000])
-def test_loaded_capacity_matches_expected_growth(pop_size):
+def test_loaded_capacity_matches_expected_growth_multipop(pop_size):
     """
     After saving and reloading a LaserFrame snapshot with known population size,
     birth rate, and duration, the reloaded frame should have capacity equal to:
@@ -128,11 +128,10 @@ def test_loaded_capacity_matches_expected_growth(pop_size):
 
 
 @pytest.mark.parametrize("pop_size", [100_000])
-@pytest.mark.parametrize("cbr", [
-    35.0,                                    # scalar float
-    np.array([35.0], dtype=np.float32),     # 1D array
-    np.full((365 * 3, 1), 35.0, dtype=np.float32)  # 2D time-series
-])
+@pytest.mark.parametrize(
+    "cbr",
+    [35.0, np.array([35.0], dtype=np.float32), np.full((365 * 3, 1), 35.0, dtype=np.float32)],  # scalar float  # 1D array  # 2D time-series
+)
 def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
     """
     Tests that LASER correctly reloads snapshots and recomputes capacity
@@ -182,10 +181,7 @@ def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
         loaded, _, _ = LaserFrame.load_snapshot(path, cbr=cbr_pass, nt=nt)
 
         # Recompute expected capacity using current modeled count
-        expected_capacity = calc_capacity(
-            birthrates=birthrates,
-            initial_pop=np.array([frame.count])
-        ).sum()
+        expected_capacity = calc_capacity(birthrates=birthrates, initial_pop=np.array([frame.count])).sum()
 
         # Output
         status = "OK"
@@ -209,6 +205,7 @@ def test_loaded_capacity_matches_expected_growth(pop_size, cbr):
 
     finally:
         Path(path).unlink()
+
 
 class TestLaserFrame(unittest.TestCase):
     def test_init(self):
@@ -690,4 +687,3 @@ class TestLaserFrame(unittest.TestCase):
             lf.age = np.arange(10)
 
         return
-
