@@ -365,10 +365,32 @@ class LaserFrame:
                 recovered_total = recovered[:, 0].sum() if recovered is not None else 0
                 n_ppl = count + recovered_total
 
-                if isinstance(cbr, (list, np.ndarray)) and len(cbr) > 1:
-                    cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
+                # Handle different CBR dimensionalities
+                if isinstance(cbr, np.ndarray):
+                    if cbr.ndim == 2:
+                        # 2D array: shape (nt, nnodes) - average over time, then weight by population
+                        cbr_per_node = np.mean(cbr, axis=0)  # Shape: (nnodes,)
+                        if cbr_per_node.size > 1:
+                            cbr_value = np.sum(cbr_per_node * n_ppl) / np.sum(n_ppl)
+                        else:
+                            cbr_value = cbr_per_node[0]
+                    elif cbr.ndim == 1:
+                        # 1D array: shape (nnodes,) - weight by population
+                        if cbr.size > 1:
+                            cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
+                        else:
+                            cbr_value = cbr[0]
+                    else:
+                        # 0D array or scalar
+                        cbr_value = float(cbr)
+                elif isinstance(cbr, list):
+                    if len(cbr) > 1:
+                        cbr_value = np.sum(np.array(cbr) * n_ppl) / np.sum(n_ppl)
+                    else:
+                        cbr_value = cbr[0]
                 else:
-                    cbr_value = cbr[0] if isinstance(cbr, (list, np.ndarray)) else cbr
+                    # Scalar
+                    cbr_value = cbr
                 ppl = np.sum(n_ppl)
 
                 estimate = calc_capacity(
