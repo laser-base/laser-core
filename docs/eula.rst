@@ -21,7 +21,8 @@ To address this, LASER supports a **squashing** process. Squashing involves
 only array indices ``[0:count]`` contain valid data. The remaining memory region ``[count:capacity]``
 is no longer considered valid and will be overwritten when new agents are added (e.g., through births).
 
-.. figure:: [PATH_TO_YOUR_DIAGRAM]
+.. figure:: media/squash_save_load.png
+   :width: 600px
    :alt: Memory layout showing active population, squashed region, and capacity
    :align: center
 
@@ -29,11 +30,6 @@ is no longer considered valid and will be overwritten when new agents are added 
    squashed agents exist in the region [count:capacity] until save/load, and future capacity
    reserves space for unborn agents (e.g., births). Saving and reloading acts as a defragmentation
    operation, reclaiming the squashed region.
-
-.. image:: media/squash_save_load.png
-   :alt: Model output for Nigeria
-   :width: 600px
-   :align: center
 
 Some notes about squashing:
 
