@@ -329,13 +329,12 @@ class LaserFrame:
                 group.attrs[key] = str(value)
 
     @classmethod
-    def load_snapshot(cls, path, n_ppl, cbr, nt):
+    def load_snapshot(cls, path, cbr, nt):
         """
         Load a LaserFrame and optional extras from an HDF5 snapshot file.
 
         Args:
             path (str): Path to the HDF5 snapshot file.
-            n_ppl (float or array-like): Original total population (or per-node array) used to estimate births.
             cbr (float or array-like): Crude birth rate (per 1000/year).
             nt (int): Simulation duration (number of ticks).
 
@@ -361,11 +360,32 @@ class LaserFrame:
                 pars = {}
 
             # Compute capacity if values are provided
-            if n_ppl is not None and cbr is not None and nt is not None:
-                if isinstance(cbr, (list, np.ndarray)) and len(cbr) > 1:
-                    cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
+            if cbr is not None and nt is not None:
+                recovered = f["recovered"][()] if "recovered" in f else None
+                recovered_total = recovered[:, 0].sum() if recovered is not None else 0
+                n_ppl = count + recovered_total
+
+                # Handle different CBR dimensionalities
+                # Note: We don't have per-node population data in snapshots, so we use simple mean
+                # instead of weighted average. For more accurate capacity estimation in multi-node
+                # scenarios, consider saving per-node population data in snapshots.
+                if isinstance(cbr, np.ndarray):
+                    if cbr.ndim == 2:
+                        # 2D array: shape (nt, nnodes) - average over time, then average across nodes
+                        cbr_per_node = np.mean(cbr, axis=0)  # Shape: (nnodes,)
+                        cbr_value = float(np.mean(cbr_per_node))
+                    elif cbr.ndim == 1:
+                        # 1D array: shape (nnodes,) - average across nodes
+                        cbr_value = float(np.mean(cbr))
+                    else:
+                        # 0D array or scalar
+                        cbr_value = float(cbr)
+                elif isinstance(cbr, list):
+                    # List of per-node CBR values - take mean
+                    cbr_value = float(np.mean(cbr))
                 else:
-                    cbr_value = cbr[0] if isinstance(cbr, (list, np.ndarray)) else cbr
+                    # Scalar
+                    cbr_value = float(cbr)
                 ppl = np.sum(n_ppl)
 
                 estimate = calc_capacity(

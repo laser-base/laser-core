@@ -264,7 +264,7 @@ class TestKaplanMeierEstimator(unittest.TestCase):
     def test_max_year_out_of_range(self):
         estimator = KaplanMeierEstimator(self.cumulative_deaths)  # Should _definitely_ match...
         ages_years = np.array([0, 1, 1, 2, 3, 5, 8], dtype=np.uint32)
-        with pytest.raises(ValueError, match=re.escape("max_year=np.uint32(115) must be less than len(self.cumulative_deaths)=101")):
+        with pytest.raises(ValueError, match=re.escape("max_year=115 must be less than len(self.cumulative_deaths)=101")):
             estimator.predict_year_of_death(ages_years, max_year=115)
 
         return
@@ -272,7 +272,7 @@ class TestKaplanMeierEstimator(unittest.TestCase):
     def test_max_index_out_of_range(self):
         estimator = KaplanMeierEstimator(self.cumulative_deaths)  # Should _definitely_ match...
         ages_years = np.array([0, 1, 1, 2, 3, 5, 8], dtype=np.uint32)
-        with pytest.raises(ValueError, match=re.escape("max_index=np.uint32(115) must be less than len(self.cumulative_deaths)=101")):
+        with pytest.raises(ValueError, match=re.escape("max_index=115 must be less than len(self.cumulative_deaths)=101")):
             estimator.sample(ages_years, max_index=115)
 
         return
@@ -282,7 +282,7 @@ class TestKaplanMeierEstimator(unittest.TestCase):
         ages_years = np.array([0, 1, 1, 2, 3, 5, 80, 85, 90, 95, 100], dtype=np.uint32)
         with pytest.raises(
             ValueError,
-            match=re.escape("all current ages must be less than or equal to max_year=np.uint32(79) (ages_years.max()=np.uint32(100))"),
+            match=re.escape("all current ages must be less than or equal to max_year=79 (ages_years.max()=100)"),
         ):
             estimator.predict_year_of_death(ages_years, max_year=79)
 
@@ -293,7 +293,7 @@ class TestKaplanMeierEstimator(unittest.TestCase):
         age_indices = np.array([0, 1, 1, 2, 3, 5, 80, 85, 90, 95, 100], dtype=np.uint32)
         with pytest.raises(
             ValueError,
-            match=re.escape("all current indices must be less than or equal to max_index=np.uint32(79) (current.max()=np.uint32(100))"),
+            match=re.escape("all current indices must be less than or equal to max_index=79 (current.max()=100)"),
         ):
             estimator.sample(age_indices, max_index=79)
 
