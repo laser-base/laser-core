@@ -102,8 +102,7 @@ class KaplanMeierEstimator:
 
         if not np.all(current <= max_index):
             raise ValueError(
-                f"all current indices must be less than or equal to "
-                f"max_index={max_index_i} (current.max()={current_max_i})"
+                f"all current indices must be less than or equal to " f"max_index={max_index_i} (current.max()={current_max_i})"
             )
         predictions = _pyod(current, self._cumulative_deaths, max_index)
 
