@@ -94,12 +94,16 @@ class KaplanMeierEstimator:
 
         if max_index is None:
             max_index = len(self.cumulative_deaths) - 1  # index of the last valid bin
-        max_index = np.uint32(max_index)
-        if not max_index < len(self.cumulative_deaths):
-            raise ValueError(f"max_index={int(max_index)} must be less than len(self.cumulative_deaths)={len(self.cumulative_deaths)}")
+        max_index_i = int(max_index)
+        if not max_index_i < len(self.cumulative_deaths):
+            raise ValueError(f"max_index={max_index_i} must be less than len(self.cumulative_deaths)={len(self.cumulative_deaths)}")
+
+        current_max_i = int(current.max())
+
         if not np.all(current <= max_index):
             raise ValueError(
-                f"all current indices must be less than or equal to max_index={int(max_index)} (current.max()={int(current.max())})"
+                f"all current indices must be less than or equal to "
+                f"max_index={max_index_i} (current.max()={current_max_i})"
             )
         predictions = _pyod(current, self._cumulative_deaths, max_index)
 
