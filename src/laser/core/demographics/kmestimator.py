@@ -94,16 +94,11 @@ class KaplanMeierEstimator:
 
         if max_index is None:
             max_index = len(self.cumulative_deaths) - 1  # index of the last valid bin
-        max_index_i = int(max_index)
-        if not max_index_i < len(self.cumulative_deaths):
-            raise ValueError(f"max_index={max_index_i} must be less than len(self.cumulative_deaths)={len(self.cumulative_deaths)}")
-
-        current_max_i = int(current.max())
-
+        max_index = np.uint32(max_index)
+        if not max_index < len(self.cumulative_deaths):
+            raise ValueError(f"{max_index=} must be less than {len(self.cumulative_deaths)=}")
         if not np.all(current <= max_index):
-            raise ValueError(
-                f"all current indices must be less than or equal to " f"max_index={max_index_i} (current.max()={current_max_i})"
-            )
+            raise ValueError(f"all current indices must be less than or equal to {max_index=} ({current.max()=})")
         predictions = _pyod(current, self._cumulative_deaths, max_index)
 
         return predictions
@@ -129,12 +124,10 @@ class KaplanMeierEstimator:
             max_year = len(self.cumulative_deaths) - 1  # index of the last valid year
         max_year = np.uint32(max_year)
         if not max_year < len(self.cumulative_deaths):
-            raise ValueError(f"max_year={int(max_year)} must be less than len(self.cumulative_deaths)={len(self.cumulative_deaths)}")
+            raise ValueError(f"{max_year=} must be less than {len(self.cumulative_deaths)=}")
 
         if not np.all(ages_years <= max_year):
-            raise ValueError(
-                f"all current ages must be less than or equal to max_year={int(max_year)} (ages_years.max()={int(ages_years.max())})"
-            )
+            raise ValueError(f"all current ages must be less than or equal to {max_year=} ({ages_years.max()=})")
         year_of_death = _pyod(ages_years, self._cumulative_deaths, max_year)
         # We assert here because we are doing internal consistency checking, not validating user input
         assert np.all(year_of_death <= max_year), f"{year_of_death.max()=} is not less than {max_year=}"
