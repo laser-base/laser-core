@@ -116,7 +116,7 @@ Stage 2: Dockerized Local Calibration (Environment Parity)
 
 **Purpose:** Validate reproducibility in a containerized environment before scaling.
 
-**Why Docker?** Ensures bitwise reproducibility between local development and production cloud runs. Catches environment-specific issues early.
+**Why Docker?** Provides environment parity and dependency reproducibility between local development and production cloud runs. When random seeds and execution settings are controlled, this should lead to outputs that match within numerical tolerance, while catching environment-specific issues early.
 
 **When to use:** After local calibration works and you're preparing to scale to distributed computing.
 
