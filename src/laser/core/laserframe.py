@@ -335,13 +335,20 @@ class LaserFrame:
 
         Args:
             path (str): Path to the HDF5 snapshot file.
-            cbr (float or array-like): Crude birth rate (per 1000/year).
-            nt (int): Simulation duration (number of ticks).
+            cbr (float or array-like, optional): Crude birth rate (per 1000/year).
+                Must be provided together with nt, or both must be None.
+                If provided, capacity is calculated to accommodate expected growth.
+                If None, capacity is set to current count (no growth expected).
+            nt (int, optional): Simulation duration (number of ticks).
+                Must be provided together with cbr, or both must be None.
 
         Returns:
             frame (LaserFrame): Loaded LaserFrame object.
             results_r (np.ndarray or None): Optional 2D numpy array of recovered counts.
             pars (dict or None): Optional dictionary of parameters.
+
+        Raises:
+            ValueError: If only one of cbr or nt is provided.
         """
 
         with h5py.File(path, "r") as f:
@@ -358,6 +365,13 @@ class LaserFrame:
                 pars.update({key: (val.decode() if isinstance(val, bytes) else val) for key, val in pars_group.attrs.items()})
             else:
                 pars = {}
+
+            # Validate that cbr and nt are both provided or both None
+            if (cbr is None) != (nt is None):
+                raise ValueError(
+                    "cbr and nt must both be provided or both be None. "
+                    "Cannot calculate capacity with only one parameter."
+                )
 
             # Compute capacity if values are provided
             if cbr is not None and nt is not None:
