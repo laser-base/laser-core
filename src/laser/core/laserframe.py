@@ -362,38 +362,42 @@ class LaserFrame:
             # Compute capacity if values are provided
             if cbr is not None and nt is not None:
                 recovered = f["recovered"][()] if "recovered" in f else None
-                recovered_total = recovered[:, 0].sum() if recovered is not None else 0
-                n_ppl = count + recovered_total
 
-                # Handle different CBR dimensionalities
-                # Note: We don't have per-node population data in snapshots, so we use simple mean
-                # instead of weighted average. For more accurate capacity estimation in multi-node
-                # scenarios, consider saving per-node population data in snapshots.
-                if isinstance(cbr, np.ndarray):
-                    if cbr.ndim == 2:
-                        # 2D array: shape (nt, nnodes) - average over time, then average across nodes
-                        cbr_per_node = np.mean(cbr, axis=0)  # Shape: (nnodes,)
-                        cbr_value = float(np.mean(cbr_per_node))
-                    elif cbr.ndim == 1:
-                        # 1D array: shape (nnodes,) - average across nodes
-                        cbr_value = float(np.mean(cbr))
-                    else:
-                        # 0D array or scalar
-                        cbr_value = float(cbr)
-                elif isinstance(cbr, list):
-                    # List of per-node CBR values - take mean
-                    cbr_value = float(np.mean(cbr))
-                else:
-                    # Scalar
-                    cbr_value = float(cbr)
-                ppl = np.sum(n_ppl)
+                node_ids = group["node_id"][:count]
+                nnodes = int(node_ids.max()) + 1
+
+                n_ppl = np.bincount(node_ids, minlength=nnodes).astype(np.int32)
+
+                # Add recovered counts from initial timestep (t=0)
+                if recovered is not None:
+                    n_ppl += recovered[0, :].astype(np.int32)
+
+                # We choose to allow:
+                # cbr = [[30, 30], [30, 30]]        # list of lists
+                # cbr = np.matrix(...)             # ndarray subclass
+                # cbr = pandas.DataFrame(...)
+                # cbr = xarray.DataArray(...)
+                # cbr = np.asarray(cbr)
+
+                if cbr.ndim != 2:
+                    raise ValueError(
+                        "load_snapshot requires cbr to be a 2-D array of shape "
+                        "(num_timesteps, num_nodes)"
+                    )
+
+                if cbr.shape[0] != nt:
+                    raise ValueError(
+                        f"CBR time dimension ({cbr.shape[0]}) does not match nt ({nt})"
+                    )
+                
+                #ppl = np.sum(n_ppl)
 
                 estimate = calc_capacity(
-                    birthrates=np.full((nt, 1), cbr_value, dtype=np.float32),  # extend CBR to (nticks, 1)
-                    initial_pop=np.array([ppl], dtype=np.int32),  # initial_pop as (1,)
+                    birthrates=cbr, # np.full((nt, 1), cbr, dtype=np.float32),  # extend CBR to (nticks, 1)
+                    initial_pop=n_ppl,
                     safety_factor=1.0,
                 )
-                capacity = int(estimate[0])
+                capacity = int(estimate.sum())
             else:
                 capacity = count
 
