@@ -1,25 +1,56 @@
 Calibration Workflow for LASER Models
 =====================================
 
-This guide explains how to calibrate a LASER model using Optuna. Calibration is the process of adjusting model parameters (e.g., transmission rate, R0) so that simulation outputs match reference data (e.g., case counts, prevalence curves). This document assumes you've already built and tested a working LASER model.
+This guide explains how to calibrate a LASER model using Optuna. Calibration is the process of adjusting model parameters (e.g., transmission rate, R0) so that simulation outputs match reference data (e.g., case counts, prevalence curves).
+
+**Important Principle:** Calibration only perturbs parameters within a fixed scenario structure. The scenario logic, geography, and core mechanisms remain constant—calibration searches for the parameter values that best fit observed data within that structure.
 
 Prerequisites
 -------------
-- A functioning, tested LASER model.
-- Python environment with `laser-core`, `optuna`, `pandas`, and `numpy` installed.
-- (Optional) Docker Desktop installed if running distributed calibration.
+Before beginning calibration, ensure you have:
 
-Simple Local Calibration
-------------------------
+- **A functioning, tested LASER model** - Your model must run successfully end-to-end with default parameters
+- **Validated single simulation** - Always test a single model run before attempting calibration
+- Python environment with `laser-core`, `optuna`, `pandas`, and `numpy` installed
+- **Reference data** - Observed data (CSV format) with time series, case counts, prevalence, etc.
+- **Clear parameter bounds** - Scientifically justified ranges for parameters to calibrate
+- (Optional) Docker Desktop installed if running distributed calibration
 
-1. **Expose Parameters in Your Model**
+Calibration Workflow: Three Stages
+-----------------------------------
+
+The LASER calibration workflow progresses through three stages, each building on the previous. **Validate each stage before moving to the next.**
+
+Stage 1: Local Calibration (Fast Iteration)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Purpose:** Rapid prototyping and debugging on a single machine.
+
+**When to use:** Initial development, testing objective functions, understanding parameter sensitivity.
+
+**When to move on:** Once you have a working calibration configuration and understand which parameters matter most.
+
+**Steps:**
+
+1. **Verify Your Model Runs**
+   Before calibrating, confirm your model executes successfully with default parameters:
+
+   .. code-block:: shell
+
+       python run_model.py --config default_config.yaml
+
+   If this fails, fix the model before attempting calibration.
+
+2. **Expose Parameters in Your Model**
    Ensure your LASER model can load and apply parameters you wish to calibrate. These are typically passed through a `params` dictionary or a `PropertySet` and might include:
 
    - Basic reproduction number (R0)
    - Duration of infection
    - Seeding prevalence
 
-2. **Write Post-Processing Code**
+   **Remember:** Calibration should only vary parameter *values*, not toggle mechanisms or change scenario structure.
+
+3. **Write Post-Processing Code**
    Modify your model to save key outputs (e.g., number of infected individuals over time) to a CSV file. For example, use:
 
    .. code-block:: python
@@ -64,8 +95,14 @@ Simple Local Calibration
    **Expected Result:** A numeric score. If it crashes, check CSV paths and data types.
 
 5. **Run Simple Calibration (SQLite, No Docker)**
-   Use the `calib/worker.py` helper to run a local test study with a small number of trials.
+   Create a `calib/worker.py` helper to run a local test study with a small number of trials. This helper should:
 
+   - parse command-line arguments (for example, ``--num-trials`` and optionally ``--storage-url``),
+   - read the ``STORAGE_URL`` environment variable if no storage URL is passed,
+   - create or load an Optuna study using that storage URL (e.g., via ``optuna.create_study(..., load_if_exists=True)``), and
+   - call ``study.optimize(objective, n_trials=args.num_trials)`` with your objective function.
+
+   For examples of configuring storage backends and running studies, see the Optuna documentation: https://optuna.readthedocs.io/en/stable/
    **Linux/macOS (Bash or similar):**
 
    .. code-block:: shell
@@ -80,24 +117,34 @@ Simple Local Calibration
 
    This is helpful for debugging. Consider running a scaled-down version of your model to save time.
 
-Local Dockerized Calibration
-----------------------------
+Stage 2: Dockerized Local Calibration (Environment Parity)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-6. **Dockerize Your Model and Objective**
+**Purpose:** Validate reproducibility in a containerized environment before scaling.
+
+**Why Docker?** Provides environment parity and dependency reproducibility between local development and production cloud runs. When random seeds and execution settings are controlled, this should lead to outputs that match within numerical tolerance, while catching environment-specific issues early.
+
+**When to use:** After local calibration works and you're preparing to scale to distributed computing.
+
+**When to move on:** When Docker runs complete successfully and produce consistent results with your local runs (within numerical tolerance).
+
+**Steps:**
+
+1. **Dockerize Your Model and Objective**
    Use the provided `Dockerfile` to build a container that includes both your model and objective function. Do this from the main directory.
 
    .. code-block:: shell
 
-       docker build . -f calib/Dockerfile -t idm-docker-staging.packages.idmod.org/laser/laser-polio:latest
+       docker build . -f calib/Dockerfile -t your-registry/laser-model:latest
 
-7. **Create Docker Network**
+2. **Create Docker Network**
    You'll need a shared network so your workers and database container can communicate:
 
    .. code-block:: shell
 
        docker network create optuna-network
 
-8. **Launch MySQL Database Container**
+3. **Launch MySQL Database Container**
 
    .. code-block:: shell
 
@@ -105,14 +152,14 @@ Local Dockerized Calibration
          -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
          -e MYSQL_DATABASE=optuna_db mysql:latest
 
-9. **Launch Calibration Worker**
+4. **Launch Calibration Worker**
 
     .. code-block:: shell
 
         docker run --rm --name calib_worker --network optuna-network \
           -e STORAGE_URL="mysql://root@optuna-mysql:3306/optuna_db" \
-          idm-docker-staging.packages.idmod.org/laser/laser-polio:latest \
-          --study-name test_polio_calib --num-trials 1
+          your-registry/laser-model:latest \
+          --study-name test_calib --num-trials 1
 
     If that works, you can change the study name or number of trials.
 
@@ -120,49 +167,60 @@ Local Dockerized Calibration
 
     .. code-block:: shell
 
-        docker run -it --network optuna-network --entrypoint /bin/bash idm-docker-staging.packages.idmod.org/laser/laser-polio:latest
+        docker run -it --network optuna-network --entrypoint /bin/bash your-registry/laser-model:latest
 
-10. **Monitor Calibration Progress**
+5. **Monitor Calibration Progress**
 
     Use Optuna CLI. You should be able to pip install optuna.
 
     .. code-block:: shell
 
         optuna trials \
-          --study-name=test_polio_calib \
+          --study-name=test_calib \
           --storage "mysql+pymysql://root:@localhost:3306/optuna_db"
 
         optuna best-trial \
-          --study-name=test_polio_calib \
+          --study-name=test_calib \
           --storage "mysql+pymysql://root:@localhost:3306/optuna_db"
 
-Cloud Calibration
-------------------
+6. **Verify Results Match Local Runs**
 
-11. **Push Docker Image to Registry**
+    Compare the best-fit parameters and likelihood scores between Docker and local runs. They should match within numerical tolerance (accounting for floating-point precision).
 
-    If you've built a new docker image, you'll want to push it so it's available to AKS.
+Stage 3: Cloud Calibration (Production Scale)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Purpose:** Distributed parameter search with hundreds or thousands of parallel trials.
+
+**When to use:** After Docker validation succeeds and you need to explore a large parameter space or run many iterations.
+
+**When to move on:** When calibration converges to stable best-fit parameters and likelihood scores plateau.
+
+**Steps:**
+
+1. **Push Docker Image to Registry**
+
+    If you've built a new docker image, you'll want to push it so it's available to your cloud cluster (e.g., AKS, GKE).
 
     .. code-block:: shell
 
-        docker push idm-docker-staging.packages.idmod.org/laser/laser-polio:latest
+        docker push your-registry/laser-model:latest
 
-12. **Cloud Deployment**
+2. **Cloud Deployment**
 
-    This step assumes you have secured access to an Azure Kubernetes Service (AKS) cluster. You may need to obtain or generate a new kube config file. Detailed instructions for that are not included here. This step assumes the cluster
-    corresponding to your config is up and accessible.
+    This step assumes you have secured access to a Kubernetes cluster (e.g., AKS, GKE). You may need to obtain or generate a kube config file. Detailed instructions for that are not included here.
 
     .. code-block:: shell
 
        cd calib/cloud
 
-    - Edit config file. Edit `cloud_calib_config.py` to set the storage_url to:
+    - Edit config file. Edit `cloud_calib_config.py` to set the storage_url to your cloud MySQL/PostgreSQL instance:
 
     .. code-block:: python
 
-        "mysql+pymysql://optuna:superSecretPassword@localhost:3306/optunaDatabase"
+        "mysql+pymysql://optuna:password@mysql-host:3306/optunaDatabase"
 
-    And set the study name and number of trials per your preference. Detailed documentation of the other parameters is not included here.
+    And set the study name and number of trials per your preference.
 
     - Launch multiple workers:
 
@@ -170,9 +228,9 @@ Cloud Calibration
 
           python3 run_calib_workers.py
 
-13. **View Final Results**
+3. **Monitor and Analyze Results**
 
-    - Forward port to local machine. Note that is the first instruction to rely on installing `kubectl`. Open a bash shell if necessary.
+    - Forward port to local machine (requires `kubectl` installed):
 
       .. code-block:: shell
 
@@ -183,109 +241,137 @@ Cloud Calibration
       .. code-block:: shell
 
           optuna trials \
-            --study-name=test_polio_calib \
-            --storage "mysql+pymysql://optuna:superSecretPassword@localhost:3306/optunaDatabase"
+            --study-name=your_study_name \
+            --storage "mysql+pymysql://optuna:password@localhost:3306/optunaDatabase"
 
           optuna best-trial \
-            --study-name=test_polio_calib \
-            --storage "mysql+pymysql://optuna:superSecretPassword@localhost:3306/optunaDatabase"
+            --study-name=your_study_name \
+            --storage "mysql+pymysql://optuna:password@localhost:3306/optunaDatabase"
 
-    - Generate a report on disk about the study (can be run during study or at end).
+    - Generate a report on disk about the study (can be run during study or at end):
 
       .. code-block:: shell
 
           python3 report_calib_aks.py
 
-    - Launch Optuna Dashboard
+    - Launch Optuna Dashboard for interactive visualization:
 
       .. code-block:: shell
 
-          python -c "import optuna_dashboard; optuna_dashboard.run_server('mysql+pymysql://optuna:superSecretPassword@127.0.0.1:3306/optunaDatabase')"
+          python -c "import optuna_dashboard; optuna_dashboard.run_server('mysql+pymysql://optuna:password@127.0.0.1:3306/optunaDatabase')"
 
+      **Note:** If port 8080 is already in use, specify a different port in the dashboard command.
+
+Common Pitfalls
+---------------
+
+**Trying to calibrate before validating a single run**
+   Always test your model with default parameters first. If a single simulation fails, calibration will fail hundreds of times. Use ``python run_model.py`` or equivalent to verify your model works end-to-end.
+
+**Allowing calibration to toggle mechanisms on/off**
+   Calibration should only vary parameter *values*, not change scenario structure. Keep mechanism switches (e.g., "enable_seasonality") fixed in your configuration. If you need to compare different model structures, run separate calibration studies for each.
+
+**Skipping Stage 2 (Docker validation)**
+   Don't jump directly from local calibration to cloud deployment. Docker catches environment-specific issues early—reproducibility problems that surface at scale are much harder to debug. Validate Docker locally first.
+
+**Debugging cloud deployment before Docker works locally**
+   If calibration fails in the cloud, first verify the exact same Docker image works on your local machine. Cloud failures are often environment issues (networking, permissions, resource limits), not calibration logic problems.
+
+**Not validating Docker results match local results**
+   Even if Docker runs complete, verify the numerical results match your local runs (within floating-point tolerance). Unexpected differences indicate environment issues that will cause problems at scale.
+
+**Using poorly justified parameter bounds**
+   Wide parameter ranges increase search space exponentially. Use scientific literature, expert knowledge, or preliminary sensitivity analysis to set reasonable bounds. Document the rationale for each range.
+
+**Insufficient trials for the parameter space**
+   A 10-dimensional parameter space needs many more trials than a 3-dimensional one. If calibration isn't converging, you may need more trials or tighter parameter bounds.
+
+**Ignoring failed trials**
+   Failed trials (model crashes, timeouts) provide information. If many trials fail in a specific parameter region, that region may be scientifically invalid. Investigate the pattern, don't just ignore failures.
 
 Expected Output
 ---------------
-- A best-fit parameter set (`R0`, etc.) that minimizes error.
-- An Optuna study saved in MySQL or SQLite.
-- Log files or CSVs showing score over time.
+- A best-fit parameter set (e.g., `R0`, transmission rates, etc.) that minimizes your objective function
+- An Optuna study database (MySQL or SQLite) containing all trial results
+- Log files showing convergence over time
+- Visualizations from Optuna dashboard showing parameter relationships and optimization progress
 
-Error Handling
+Troubleshooting
+---------------
+
+**Missing CSVs or output files**
+   Ensure your model writes output files before the objective function tries to read them. Test the output path in a single run first.
+
+**Model crashes during calibration**
+   - Check Docker logs: ``docker logs <container>``
+   - Run the container interactively: ``docker run -it --entrypoint /bin/bash your-image``
+   - Test the failing parameter combination in a standalone run
+   - Check for resource limits (memory, disk space)
+
+**Database connection errors**
+   - Confirm Docker network exists: ``docker network ls``
+   - Check container health: ``docker ps`` and ``docker logs optuna-mysql``
+   - Verify MySQL is listening: ``docker exec optuna-mysql mysql -e "SELECT 1"``
+   - Test connection string from within worker container
+
+**Optuna study not found**
+   - Verify study name matches exactly (case-sensitive)
+   - Check you're connecting to the correct database
+   - Confirm at least one trial has been submitted
+
+**Poor convergence or no improvement**
+   - Verify objective function returns correct values (not NaN or Inf)
+   - Check parameter bounds are reasonable for your model
+   - Increase number of trials
+   - Examine parameter distributions in Optuna dashboard to identify if certain regions are unexplored
+
+**Docker image build failures**
+   - Check Dockerfile syntax
+   - Verify all dependencies are listed
+   - Test each RUN command separately
+   - Check for network issues during package downloads
+
+Best Practices
 --------------
-- Missing CSVs: Ensure output files are written by the model before scoring.
-- Model crashes: Check Docker logs (`docker logs <container>`) or run interactively.
-- Database connection errors: Confirm Docker network and container health. Ensure MySQL is listening on the expected port.
 
-Iterative Development Cycle
----------------------------
+**Start small, scale gradually**
+   Begin with just 1-2 trials to validate your objective function. Then scale to 10-20 trials locally, verify Docker produces consistent results, and only then move to cloud scale with hundreds or thousands of trials.
 
-.. image:: media/workflow.png
-   :alt: LASER Calibration Development Workflow
-   :align: center
-   :width: 800px
+**Use scaled-down models for debugging**
+   When testing your calibration setup, use a reduced version of your model (shorter time period, smaller population, fewer nodes). This speeds up iteration and makes debugging practical.
 
-Workflow Steps
-~~~~~~~~~~~~~~
+**Version control your configurations**
+   Keep calibration configurations (parameter bounds, study settings) in version control alongside your model code. Document the rationale for parameter ranges.
 
-1. **Test & Run Locally**
+**Monitor resource usage**
+   Track memory, CPU, and disk usage during calibration. Models that barely fit in memory locally may fail at scale. Plan resource requests accordingly for cloud deployment.
 
-    Test your model and calibration code locally before committing or containerizing.
+**Document your objective function**
+   Clearly document what your objective function measures, how it weights different data sources, and what "better" means (lower or higher values). This helps others understand and modify your calibration.
 
-    .. code-block:: shell
+**Preserve intermediate results**
+   Configure your model to save intermediate outputs even if a simulation fails partway through. This helps diagnose parameter regions that cause instability.
 
-        python3 calibrate.py --study-name=test_local --num-trials=3
+**Use scientific priors**
+   Don't treat calibration as a black box. Use domain knowledge to set reasonable parameter bounds and validate that best-fit parameters are scientifically plausible.
 
-2. **Push to GitHub**
+Continuous Integration Tips
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Push your changes to GitHub and submit a pull request for review. Once approved, merge to the default branch (e.g. `main` or `develop`).
+If you're using CI/CD pipelines (GitHub Actions, etc.):
 
-3. **GHA Build & Publish Wheel**
-
-    GitHub Actions (GHA) will automatically build a Python wheel and publish it to your private PyPI/Artifactory.
-
-4. **Docker Build (using wheel)**
-
-    On your local machine, build a Docker image using the freshly published wheel.
-
-    .. code-block:: shell
-
-        docker build -t idm-docker-staging.packages.idmod.org/laser/laser-polio:latest .
-
-5. **Push Docker Image**
-
-    Push the built image to your container registry so it's accessible from AKS.
-
-    .. code-block:: shell
-
-        docker push idm-docker-staging.packages.idmod.org/laser/laser-polio:latest
-
-6. **Submit and Run Calibration Job**
-
-    a. **Submit Job to AKS**:
-
-    Launch your Kubernetes job to run calibration using the new image.
-
-    .. code-block:: shell
-
-        python3 run_calib_workers.py
-
-    b. **Run Calibration Job**:
-
-    The cluster pulls the image and executes the calibration job according to the job spec.
-
-7. **Pull Results from AKS**
-
-   See above.
-
-Notes
-~~~~~
-
-- If port 8080 is already in use when launching the dashboard, use `port=8081` or another free port.
-- Make sure your port-forwarding process is active whenever running Optuna CLI or dashboard from your local machine.
-- Each iteration through this workflow can test new parameters, updated logic, or bug fixes — without affecting production deployments.
+1. Test calibration code in CI with 1-2 trials using a fast model
+2. Build Docker images automatically after merging to main
+3. Tag images with git commit hash for reproducibility
+4. Keep cloud deployment scripts in version control
+5. Archive best-fit parameters and study databases for each major calibration run
 
 Next Steps
 ----------
 Once you've completed calibration:
-- Analyze the best-fit parameters.
-- Re-run your model using the optimal settings.
-- Generate plots or reports to summarize calibration quality.
+
+- **Validate best-fit parameters** - Verify they're scientifically reasonable
+- **Examine parameter correlations** - Use Optuna dashboard to understand parameter relationships
+- **Run posterior checks** - Simulate with best-fit parameters and compare to held-out data
+- **Document results** - Record parameter values, likelihood scores, and any insights
+- **Use in scenario analysis** - Apply calibrated parameters to your research questions
