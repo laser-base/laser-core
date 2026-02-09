@@ -332,27 +332,36 @@ class LaserFrame:
     def load_snapshot(cls, path, cbr, nt):
         """
         Load a LaserFrame and optional extras from an HDF5 snapshot file.
-        This function assumes the snapshot contains per-agent node_id,
-        and that recovered counts are stored in (time, node) layout.
 
         Args:
             path (str): Path to the HDF5 snapshot file.
-            cbr (float or array-like, optional): Crude birth rate (per 1000/year).
-                Must be provided together with nt, or both must be None.
-                If provided, capacity is calculated to accommodate expected growth.
-                If None, capacity is set to current count (no growth expected).
-            nt (int, optional): Simulation duration (number of ticks).
-                Must be provided together with cbr, or both must be None.
+
+            cbr (np.ndarray, optional): A 2D NumPy array of crude birth rates
+                with shape (num_timesteps, num_nodes), in units of births per
+                1000 individuals per year. If provided, nt must also be provided,
+                and capacity will be estimated to accommodate projected population
+                growth. If None, capacity is set to the current count only.
+
+            nt (int, optional): Number of timesteps (days). Must be provided
+                together with cbr, or both must be None.
 
         Returns:
-            frame (LaserFrame): Loaded LaserFrame object.
-            results_r (np.ndarray or None): Optional 2D numpy array of recovered counts.
-            pars (dict or None): Optional dictionary of parameters.
+            frame (LaserFrame): The loaded LaserFrame object.
+            results_r (np.ndarray or None): A 2D array of recovered counts with
+                shape (time, nodes), or None if not present in the snapshot.
+            pars (dict): Dictionary of model parameters stored in the snapshot,
+                or empty if none are found.
 
         Raises:
             ValueError: If only one of cbr or nt is provided.
-        """
+            ValueError: If required fields (like 'node_id') are missing.
+            ValueError: If array shapes do not align across cbr, recovered, and node_id.
 
+        Notes:
+            - Snapshots must contain a per-agent 'node_id' property.
+            - The recovered array is assumed to be in (time, node) layout.
+            - The capacity estimate includes both current and recovered agents at t=0.
+        """
         with h5py.File(path, "r") as f:
             group = f["people"]
             count = int(group.attrs["count"])
