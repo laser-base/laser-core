@@ -114,6 +114,7 @@ def test_loaded_capacity_matches_expected_growth_single_node(pop_size):
     finally:
         Path(path).unlink()
 
+
 @pytest.mark.parametrize("nnodes", [1, 3])
 def test_loaded_capacity_matches_expected_growth_multi_node(nnodes):
     """
@@ -183,6 +184,7 @@ def test_loaded_capacity_matches_expected_growth_multi_node(nnodes):
 
     finally:
         Path(path).unlink()
+
 
 class TestLaserFrame(unittest.TestCase):
     def test_init(self):

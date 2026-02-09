@@ -368,10 +368,7 @@ class LaserFrame:
 
             # Validate that cbr and nt are both provided or both None
             if (cbr is None) != (nt is None):
-                raise ValueError(
-                    "cbr and nt must both be provided or both be None. "
-                    "Cannot calculate capacity with only one parameter."
-                )
+                raise ValueError("cbr and nt must both be provided or both be None. " "Cannot calculate capacity with only one parameter.")
 
             # Compute capacity if values are provided
             if cbr is not None and nt is not None:
@@ -394,20 +391,13 @@ class LaserFrame:
                 # cbr = np.asarray(cbr)
 
                 if cbr.ndim != 2:
-                    raise ValueError(
-                        "load_snapshot requires cbr to be a 2-D array of shape "
-                        "(num_timesteps, num_nodes)"
-                    )
+                    raise ValueError("load_snapshot requires cbr to be a 2-D array of shape " "(num_timesteps, num_nodes)")
 
                 if cbr.shape[0] != nt:
-                    raise ValueError(
-                        f"CBR time dimension ({cbr.shape[0]}) does not match nt ({nt})"
-                    )
-                
-                #ppl = np.sum(n_ppl)
+                    raise ValueError(f"CBR time dimension ({cbr.shape[0]}) does not match nt ({nt})")
 
                 estimate = calc_capacity(
-                    birthrates=cbr, # np.full((nt, 1), cbr, dtype=np.float32),  # extend CBR to (nticks, 1)
+                    birthrates=cbr,
                     initial_pop=n_ppl,
                     safety_factor=1.0,
                 )
