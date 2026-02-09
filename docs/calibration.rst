@@ -95,8 +95,14 @@ Stage 1: Local Calibration (Fast Iteration)
    **Expected Result:** A numeric score. If it crashes, check CSV paths and data types.
 
 5. **Run Simple Calibration (SQLite, No Docker)**
-   Create a `calib/worker.py` helper to run a local test study with a small number of trials. You can use optuna docs or AI to help with this very standard step.
+   Create a `calib/worker.py` helper to run a local test study with a small number of trials. This helper should:
 
+   - parse command-line arguments (for example, ``--num-trials`` and optionally ``--storage-url``),
+   - read the ``STORAGE_URL`` environment variable if no storage URL is passed,
+   - create or load an Optuna study using that storage URL (e.g., via ``optuna.create_study(..., load_if_exists=True)``), and
+   - call ``study.optimize(objective, n_trials=args.num_trials)`` with your objective function.
+
+   For examples of configuring storage backends and running studies, see the Optuna documentation: https://optuna.readthedocs.io/en/stable/
    **Linux/macOS (Bash or similar):**
 
    .. code-block:: shell
