@@ -332,6 +332,8 @@ class LaserFrame:
     def load_snapshot(cls, path, cbr, nt):
         """
         Load a LaserFrame and optional extras from an HDF5 snapshot file.
+        This function assumes the snapshot contains per-agent node_id,
+        and that recovered counts are stored in (time, node) layout.
 
         Args:
             path (str): Path to the HDF5 snapshot file.
@@ -374,13 +376,22 @@ class LaserFrame:
             if cbr is not None and nt is not None:
                 recovered = f["recovered"][()] if "recovered" in f else None
 
+                if "node_id" not in group:
+                    raise ValueError("Snapshot is missing 'node_id'; cannot determine per-node population.")
+
                 node_ids = group["node_id"][:count]
+
+                if len(node_ids) != count:
+                    raise ValueError(f"node_id array length ({len(node_ids)}) does not match count ({count})")
+
                 nnodes = int(node_ids.max()) + 1
 
                 n_ppl = np.bincount(node_ids, minlength=nnodes).astype(np.int32)
 
                 # Add recovered counts from initial timestep (t=0)
                 if recovered is not None:
+                    if recovered.shape[1] != nnodes:
+                        raise ValueError(f"Recovered node count ({recovered.shape[1]}) does not match inferred node count ({nnodes})")
                     n_ppl += recovered[0, :].astype(np.int32)
 
                 # We choose to allow:
@@ -395,6 +406,12 @@ class LaserFrame:
 
                 if cbr.shape[0] != nt:
                     raise ValueError(f"CBR time dimension ({cbr.shape[0]}) does not match nt ({nt})")
+
+                if cbr.shape[1] != nnodes:
+                    raise ValueError(f"CBR node dimension ({cbr.shape[1]}) does not match inferred node count ({nnodes})")
+
+                if n_ppl.shape[0] != nnodes:
+                    raise ValueError(f"Inferred population length ({n_ppl.shape[0]}) does not match expected node count ({nnodes})")
 
                 estimate = calc_capacity(
                     birthrates=cbr,
