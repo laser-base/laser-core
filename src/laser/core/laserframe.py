@@ -329,22 +329,39 @@ class LaserFrame:
                 group.attrs[key] = str(value)
 
     @classmethod
-    def load_snapshot(cls, path, n_ppl, cbr, nt):
+    def load_snapshot(cls, path, cbr, nt):
         """
         Load a LaserFrame and optional extras from an HDF5 snapshot file.
 
         Args:
             path (str): Path to the HDF5 snapshot file.
-            n_ppl (float or array-like): Original total population (or per-node array) used to estimate births.
-            cbr (float or array-like): Crude birth rate (per 1000/year).
-            nt (int): Simulation duration (number of ticks).
+
+            cbr (np.ndarray, optional): A 2D NumPy array of crude birth rates
+                with shape (num_timesteps, num_nodes), in units of births per
+                1000 individuals per year. If provided, nt must also be provided,
+                and capacity will be estimated to accommodate projected population
+                growth. If None, capacity is set to the current count only.
+
+            nt (int, optional): Number of timesteps (days). Must be provided
+                together with cbr, or both must be None.
 
         Returns:
-            frame (LaserFrame): Loaded LaserFrame object.
-            results_r (np.ndarray or None): Optional 2D numpy array of recovered counts.
-            pars (dict or None): Optional dictionary of parameters.
-        """
+            frame (LaserFrame): The loaded LaserFrame object.
+            results_r (np.ndarray or None): A 2D array of recovered counts with
+                shape (time, nodes), or None if not present in the snapshot.
+            pars (dict): Dictionary of model parameters stored in the snapshot,
+                or empty if none are found.
 
+        Raises:
+            ValueError: If only one of cbr or nt is provided.
+            ValueError: If required fields (like 'node_id') are missing.
+            ValueError: If array shapes do not align across cbr, recovered, and node_id.
+
+        Notes:
+            - Snapshots must contain a per-agent 'node_id' property.
+            - The recovered array is assumed to be in (time, node) layout.
+            - The capacity estimate includes both current and recovered agents at t=0.
+        """
         with h5py.File(path, "r") as f:
             group = f["people"]
             count = int(group.attrs["count"])
@@ -360,20 +377,57 @@ class LaserFrame:
             else:
                 pars = {}
 
+            # Validate that cbr and nt are both provided or both None
+            if (cbr is None) != (nt is None):
+                raise ValueError("cbr and nt must both be provided or both be None. " "Cannot calculate capacity with only one parameter.")
+
             # Compute capacity if values are provided
-            if n_ppl is not None and cbr is not None and nt is not None:
-                if isinstance(cbr, (list, np.ndarray)) and len(cbr) > 1:
-                    cbr_value = np.sum(cbr * n_ppl) / np.sum(n_ppl)
-                else:
-                    cbr_value = cbr[0] if isinstance(cbr, (list, np.ndarray)) else cbr
-                ppl = np.sum(n_ppl)
+            if cbr is not None and nt is not None:
+                recovered = f["recovered"][()] if "recovered" in f else None
+
+                if "node_id" not in group:
+                    raise ValueError("Snapshot is missing 'node_id'; cannot determine per-node population.")
+
+                node_ids = group["node_id"][:count]
+
+                if len(node_ids) != count:
+                    raise ValueError(f"node_id array length ({len(node_ids)}) does not match count ({count})")
+
+                nnodes = int(node_ids.max()) + 1
+
+                n_ppl = np.bincount(node_ids, minlength=nnodes).astype(np.int32)
+
+                # Add recovered counts from initial timestep (t=0)
+                if recovered is not None:
+                    if recovered.shape[1] != nnodes:
+                        raise ValueError(f"Recovered node count ({recovered.shape[1]}) does not match inferred node count ({nnodes})")
+                    n_ppl += recovered[0, :].astype(np.int32)
+
+                # We choose to allow:
+                # cbr = [[30, 30], [30, 30]]        # list of lists
+                # cbr = np.matrix(...)             # ndarray subclass
+                # cbr = pandas.DataFrame(...)
+                # cbr = xarray.DataArray(...)
+                # cbr = np.asarray(cbr)
+
+                if cbr.ndim != 2:
+                    raise ValueError("load_snapshot requires cbr to be a 2-D array of shape " "(num_timesteps, num_nodes)")
+
+                if cbr.shape[0] != nt:
+                    raise ValueError(f"CBR time dimension ({cbr.shape[0]}) does not match nt ({nt})")
+
+                if cbr.shape[1] != nnodes:
+                    raise ValueError(f"CBR node dimension ({cbr.shape[1]}) does not match inferred node count ({nnodes})")
+
+                if n_ppl.shape[0] != nnodes:
+                    raise ValueError(f"Inferred population length ({n_ppl.shape[0]}) does not match expected node count ({nnodes})")
 
                 estimate = calc_capacity(
-                    birthrates=np.full((nt, 1), cbr_value, dtype=np.float32),  # extend CBR to (nticks, 1)
-                    initial_pop=np.array([ppl], dtype=np.int32),  # initial_pop as (1,)
+                    birthrates=cbr,
+                    initial_pop=n_ppl,
                     safety_factor=1.0,
                 )
-                capacity = int(estimate[0])
+                capacity = int(estimate.sum())
             else:
                 capacity = count
 

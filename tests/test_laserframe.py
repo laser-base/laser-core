@@ -49,6 +49,143 @@ from laser.core import PropertySet
 from laser.core.utils import calc_capacity
 
 
+@pytest.mark.parametrize("pop_size", [10_000, 100_000, 1_000_000, 10_000_000])
+def test_loaded_capacity_matches_expected_growth_single_node(pop_size):
+    """
+    After saving and reloading a LaserFrame snapshot with a known population,
+    2-D CBR, and duration, the reloaded frame should have sufficient capacity
+    to model expected population growth.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
+        path = tmp.name
+
+    try:
+        # Simulation parameters
+        nt = 365 * 3  # 3 years
+        nnodes = 1
+        cbr_value = 35.0
+
+        # Strict 2-D CBR (time, node)
+        cbr = np.full((nt, nnodes), cbr_value, dtype=np.float32)
+        initial_pop = np.array([pop_size], dtype=np.int32)
+
+        # Expected final population
+        expected_final = calc_capacity(
+            birthrates=cbr,
+            initial_pop=initial_pop,
+        ).sum()
+
+        # Create frame
+        frame = LaserFrame(capacity=int(expected_final), initial_count=pop_size)
+        frame.add_scalar_property("age", dtype=np.int32)
+        frame.add_scalar_property("status", dtype=np.int8)
+        frame.add_scalar_property("node_id", dtype=np.int32, default=0)
+
+        # Dummy data
+        np.random.seed(42)
+        frame.age[:] = np.random.randint(0, 90, size=pop_size)
+        frame.status[:] = np.random.choice([0, 1], size=pop_size)
+        # All agents in node 0 for single-node case
+        frame.node_id[:] = 0
+
+        # Squash some agents to simulate churn
+        mask = (frame.status == 1) | (frame.age > 75)
+        frame.squash(~mask)
+
+        # Save snapshot with non-zero recovered at t=0
+        results_r = np.zeros((nt, nnodes), dtype=np.float32)
+        results_r[0, 0] = 100.0
+        frame.save_snapshot(path, results_r=results_r, pars={})
+
+        # Reload snapshot
+        loaded, _, _ = LaserFrame.load_snapshot(path, cbr=cbr, nt=nt)
+
+        # Recompute expected capacity using *modeled* agents only
+        expected_capacity = calc_capacity(
+            birthrates=cbr,
+            initial_pop=np.array([frame.count], dtype=np.int32),
+        ).sum()
+
+        # Assertions
+        assert loaded.count == frame.count
+        assert loaded.capacity >= expected_capacity
+        assert loaded.capacity <= expected_capacity * 1.1
+
+    finally:
+        Path(path).unlink()
+
+
+@pytest.mark.parametrize("nnodes", [1, 3])
+def test_loaded_capacity_matches_expected_growth_multi_node(nnodes):
+    """
+    Verify that load_snapshot correctly recomputes capacity when given
+    a strict 2-D CBR array (time, node) in a multi-node scenario.
+
+    Since snapshots do not store per-node population, load_snapshot
+    aggregates nodes internally and must allocate sufficient capacity
+    for total population growth.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
+        path = tmp.name
+
+    try:
+        nt = 365 * 3
+        cbr_value = 35.0
+        pop_size = 100_000
+
+        # Distribute population evenly across nodes
+        ppl = np.array([pop_size // nnodes] * nnodes, dtype=np.int32)
+
+        # Strict 2-D CBR
+        cbr = np.full((nt, nnodes), cbr_value, dtype=np.float32)
+
+        # Expected total population growth (true multi-node math)
+        expected_final = calc_capacity(
+            birthrates=cbr,
+            initial_pop=ppl,
+        ).sum()
+
+        # Create frame
+        frame = LaserFrame(capacity=int(expected_final), initial_count=pop_size)
+        frame.add_scalar_property("age", dtype=np.int32)
+        frame.add_scalar_property("status", dtype=np.int8)
+        frame.add_scalar_property("node_id", dtype=np.int32, default=0)
+
+        # Dummy data
+        np.random.seed(42)
+        frame.age[:] = np.random.randint(0, 90, size=pop_size)
+        frame.status[:] = np.random.choice([0, 1], size=pop_size)
+        # Distribute agents across nodes (round-robin)
+        frame.node_id[:] = np.arange(pop_size) % nnodes
+
+        # Squash
+        mask = (frame.status == 1) | (frame.age > 75)
+        frame.squash(~mask)
+
+        # Save snapshot with recovered counts per node at t=0
+        results_r = np.zeros((nt, nnodes), dtype=np.float32)
+        results_r[0, :] = 50.0
+        frame.save_snapshot(path, results_r=results_r, pars={})
+
+        # Reload snapshot
+        loaded, _, _ = LaserFrame.load_snapshot(path, cbr=cbr, nt=nt)
+
+        # load_snapshot aggregates nodes → treat as single population
+        aggregated_cbr = np.mean(cbr, axis=1, keepdims=True)
+        expected_capacity = calc_capacity(
+            birthrates=aggregated_cbr,
+            initial_pop=np.array([frame.count], dtype=np.int32),
+        ).sum()
+
+        # Assertions
+        assert loaded.count == frame.count
+        assert loaded.capacity >= expected_capacity
+        assert loaded.capacity <= expected_capacity * 1.1
+
+    finally:
+        Path(path).unlink()
+
+
 class TestLaserFrame(unittest.TestCase):
     def test_init(self):
         pop = LaserFrame(1024, initial_count=0)
@@ -302,11 +439,13 @@ class TestLaserFrame(unittest.TestCase):
             frame = LaserFrame(capacity=100_000, initial_count=count)
             frame.add_scalar_property("age", dtype=np.int32)
             frame.add_scalar_property("status", dtype=np.int8)
+            frame.add_scalar_property("node_id", dtype=np.int32, default=0)
 
             # Assign values
             np.random.seed(42)
             frame.age[:] = np.random.randint(0, 100, size=count)
             frame.status[:] = np.random.choice([0, 1], size=count)  # 1 = recovered
+            frame.node_id[:] = 0  # Single node
 
             # Squash agents who are recovered or age > 70
             mask = (frame.status == 1) | (frame.age > 70)
@@ -323,12 +462,12 @@ class TestLaserFrame(unittest.TestCase):
             frame.save_snapshot(path, results_r=results_r, pars=pars)
 
             # Load
-            # loaded, r_loaded, pars_loaded = frame.load_snapshot(path, n_ppl=pars["n_ppl"], cbr=pars["cbr"], nt=pars["dur"])
-            loaded, r_loaded, pars_loaded = frame.load_snapshot(path, n_ppl=None, cbr=None, nt=None)
+            loaded, r_loaded, pars_loaded = frame.load_snapshot(path, cbr=None, nt=None)
 
             assert loaded.count == frame.count
             assert np.array_equal(loaded.age, frame.age)
             assert np.array_equal(loaded.status, frame.status)
+            assert np.array_equal(loaded.node_id, frame.node_id)
             assert np.array_equal(r_loaded, results_r)
             assert pars_loaded["r0"] == 2.5
             # print(f"pars_loaded={pars_loaded}")
@@ -337,70 +476,6 @@ class TestLaserFrame(unittest.TestCase):
             # print("test_save_and_load_snapshot passed.")
         finally:
             Path(path).unlink()
-
-        return
-
-    @unittest.skip("Not sure what this test is checking. Calculated capacity == saved capacity?")
-    def test_capacity_reasonable_for_various_populations(self):
-        for pop_size in [10_000, 100_000, 1_000_000, 10_000_000]:
-            with self.subTest(population=pop_size):
-                with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-                    path = tmp.name
-
-                try:
-                    ppl = np.array([pop_size])
-                    cbr = 35.0
-                    nt = 365 * 3  # 3 years
-
-                    # Simulated frame
-                    capacity = calc_capacity(
-                        birthrates=np.full((nt, 1), cbr, dtype=np.float32),  # extend CBR to (nticks, 1)
-                        initial_pop=ppl,
-                        safety_factor=1.0,
-                    ).sum()
-                    frame = LaserFrame(capacity=capacity, initial_count=pop_size)
-                    frame.add_scalar_property("age", dtype=np.int32)
-                    frame.add_scalar_property("status", dtype=np.int8)
-
-                    np.random.seed(42)
-                    frame.age[:pop_size] = np.random.randint(0, 90, size=pop_size)
-                    frame.status[:pop_size] = np.random.choice([0, 1], size=pop_size)
-
-                    # Remove some agents for realism
-                    mask = (frame.status == 1) | (frame.age > 75)
-                    mask = mask[:pop_size]
-                    frame.squash(~mask)
-
-                    results_r = np.linspace(0, 100, 10, dtype=np.float32).reshape(1, -1)
-                    frame.save_snapshot(path, results_r=results_r, pars={})
-
-                    # Expected births
-                    total_pop = ppl.sum()
-                    expected_final = calc_capacity(
-                        birthrates=np.full((nt, 1), cbr, dtype=np.float32),  # extend CBR to (nticks, 1)
-                        initial_pop=ppl,
-                        safety_factor=1.0,
-                    ).sum()
-                    expected_births = expected_final - total_pop
-                    expected_capacity = frame.count + expected_births
-
-                    # Load
-                    loaded, _, _ = LaserFrame.load_snapshot(path, n_ppl=ppl.sum(), cbr=cbr, nt=nt)
-
-                    # Absolute memory bound
-                    bytes_per_agent = 8
-                    max_overhead = 10 * 1024 * 1024  # 10 MB
-                    excess_agents = loaded.capacity - expected_capacity
-                    excess_bytes = excess_agents * bytes_per_agent
-
-                    assert excess_bytes <= max_overhead, (
-                        f"Excess memory for pop={pop_size}: "
-                        f"{excess_bytes / (1024 * 1024):.2f} MB "
-                        f"(capacity={loaded.capacity}, expected={expected_capacity})"
-                    )
-
-                finally:
-                    Path(path).unlink()
 
         return
 
@@ -594,7 +669,3 @@ class TestLaserFrame(unittest.TestCase):
             lf.age = np.arange(10)
 
         return
-
-
-if __name__ == "__main__":
-    unittest.main()

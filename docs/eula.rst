@@ -1,6 +1,10 @@
 Population Initialization, Squashing, and Snapshot Management in LASER
 =======================================================================
 
+.. note::
+   **EULA** = **E**\ pidemiologically **U**\ ninteresting **L**\ ight **A**\ gent
+
+   An EULA is an agent that no longer affects disease dynamics (e.g., permanently recovered or immune individuals) and can be compressed into aggregate counts rather than tracked individually.
 
 As the number agents in your LASER population model grows (e.g., 1e8), it can become computationally
 expensive and unnecessary to repeatedly run the same (sophisticated) initialization routine every sim.
@@ -13,9 +17,19 @@ This approach is especially useful when working with EULAs -- Epidemiologically 
 
 To address this, LASER supports a **squashing** process. Squashing involves
 *defragmenting the data frame* such that all epidemiologically active or "interesting" agents
-(e.g., Susceptible or Infectious) are moved to the beginning of the array or table, and
-less relevant agents (e.g., Recovered) are moved to the end. Though please note that you should
-assume that squashed agent data is overwritten.
+(e.g., Susceptible or Infectious) are compacted to the beginning of the array. After squashing,
+only array indices ``[0:count]`` contain valid data. The remaining memory region ``[count:capacity]``
+is no longer considered valid and will be overwritten when new agents are added (e.g., through births).
+
+.. figure:: media/squash_save_load.png
+   :width: 600px
+   :alt: Memory layout showing active population, squashed region, and capacity
+   :align: center
+
+   Memory layout of LASER population arrays. Active (modeled) agents occupy indices [0:count],
+   squashed agents exist in the region [count:capacity] until save/load, and future capacity
+   reserves space for unborn agents (e.g., births). Saving and reloading acts as a defragmentation
+   operation, reclaiming the squashed region.
 
 Some notes about squashing:
 
@@ -43,7 +57,7 @@ This count should be stored in a summary variable —- typically the ``R`` colum
 This ensures your model retains a complete epidemiological record even though the agents themselves are
 no longer instantiated.
 
-Implementation Deatils: How to Add Squashing, Saving, Loading, and Correct R Tracking to a LASER SIR Model
+Implementation Details: How to Add Squashing, Saving, Loading, and Correct R Tracking to a LASER SIR Model
 ==========================================================================================================
 
 1. Add Squashing
@@ -55,8 +69,10 @@ Implementation Deatils: How to Add Squashing, Saving, Loading, and Correct R Tra
 - **Count your “squashed away” agents first**
   You must compute and store all statistics related to agents being squashed *before* the `squash()` call. After squashing, only the left-hand portion of the arrays (up to `.count`) remains valid.
 
-- **Seed infections after squashing**
-  If your model seeds new infections (`disease_state == 1`), this must happen *after* squashing. Otherwise, infected agents may be inadvertently removed.
+- **Seed infections timing depends on your workflow**
+
+  - **If squashing then running immediately**: Seed infections *after* squashing. Otherwise, infected agents may be inadvertently removed.
+  - **If squashing then saving for later**: Seed infections *before* squashing so they are included in the saved snapshot.
 
 - **Store the squashed-away totals by node**
   Before squashing, compute and record node-wise totals (e.g., recovered counts) in `results.R[0, :]` so this pre-squash information persists.
@@ -72,7 +88,7 @@ Implement a ``save(path)`` method:
 - Use ``LaserFrame.save_snapshot(path, results_r=..., pars=...)``
 - Include:
 
-  - The squashed population (active agents only)
+  - The **post-squash active population** (only array indices ``[0:count]`` are saved; squashed agents are not included)
   - The ``results.R`` matrix containing both pre-squash and live simulation values
   - The full parameter set in a ``PropertySet``
 
@@ -81,13 +97,13 @@ Implement a ``save(path)`` method:
 
 Implement a ``load(path)`` class method:
 
-- Call ``LaserFrame.load_snapshot(path)`` to retrieve:
+- Call ``LaserFrame.load_snapshot(path, cbr, nt)`` to retrieve:
 
-  - Population frame
+  - Population frame (with ``capacity`` automatically calculated based on expected births)
   - Results matrix
   - Parameters
 
-- Set ``.capacity = .count`` if not doing births, else set capacity based on projected population growth from count.
+- The ``cbr`` (crude birth rate per 1000/year) and ``nt`` (simulation duration in ticks) parameters are required if your model includes births. LASER will automatically calculate the appropriate capacity to accommodate population growth. If not modeling births, pass ``cbr=None`` and ``nt=None`` to set ``capacity = count``.
 - Reconstruct all components using ``init_from_file()``
 
 .. warning::
@@ -112,7 +128,7 @@ Implement a ``load(path)`` class method:
       self.results.R[t, nid] += ((self.population.node_id == nid) &
                                  (self.population.disease_state == 2)).sum()
 
-This ensures your output accounts for both squashed-away immunity and recoveries during the live simulation.
+  This works because ``results.R`` was pre-populated with squashed agent counts before squashing (see step 1 above, where ``populate_results()`` records node-wise recovered totals). The ``+=`` operator adds new recoveries during the simulation to these pre-existing counts, ensuring your output accounts for both squashed-away immunity and recoveries during the live simulation.
 
 Complete SIR LASER Model with Squashing and Snapshot Support
 ============================================================
@@ -143,17 +159,17 @@ This example demonstrates a complete SIR model using LASER, featuring:
             self.pars = pars
 
         def step(self):
-        """
-        For each node in the population, calculate the number of new infections as a function of:
-        - the number of infected individuals,
-        - the number of susceptibles,
-        - adjustments for migration and seasonality,
-        - and individual-level heterogeneity.
+            """
+            For each node in the population, calculate the number of new infections as a function of:
+            - the number of infected individuals,
+            - the number of susceptibles,
+            - adjustments for migration and seasonality,
+            - and individual-level heterogeneity.
 
-        Then, select new infections at random from among the susceptible individuals in each node,
-        and initiate infection in those individuals.
-        """
-        pass  # Implementation omitted for documentation purposes
+            Then, select new infections at random from among the susceptible individuals in each node,
+            and initiate infection in those individuals.
+            """
+            pass  # Implementation omitted for documentation purposes
 
         @classmethod
         def init_from_file(cls, population, pars):
@@ -168,11 +184,11 @@ This example demonstrates a complete SIR model using LASER, featuring:
             self.pars = pars
 
         def step(self):
-        """
-        At each time step, update the disease state of infected individuals based on the model's
-        progression logic. This may be driven by probabilities, timers, or other intrahost dynamics.
-        """
-        pass  # Implementation omitted for documentation
+            """
+            At each time step, update the disease state of infected individuals based on the model's
+            progression logic. This may be driven by probabilities, timers, or other intrahost dynamics.
+            """
+            pass  # Implementation omitted for documentation
 
         @classmethod
         def init_from_file(cls, population, pars):
@@ -257,17 +273,21 @@ This example demonstrates a complete SIR model using LASER, featuring:
             self.population.save_snapshot(path, results_r=self.results.R, pars=self.pars)
 
         @classmethod
-        def load(cls, path):
+        def load(cls, path, cbr=35.0, sim_duration=365):
             """
             Reload a model from an HDF5 snapshot. Note: reloaded population will have
             only post-squash agents (e.g., susceptibles and infected).
+
+            Args:
+                path: Path to the snapshot HDF5 file
+                cbr: Crude birth rate (per 1000/year) for capacity calculation
+                sim_duration: Simulation duration in days for capacity calculation
             """
-            pop, results_r, pars = LaserFrame.load_snapshot(path)
+            pop, results_r, pars = LaserFrame.load_snapshot(path, cbr=cbr, nt=sim_duration)
             model = cls(num_agents=pop.capacity, num_nodes=results_r.shape[1], timesteps=results_r.shape[0])
             model.population = pop
             model.results.R[:, :] = results_r
             model.pars = PropertySet(pars)
-            model.pars["transmission_prob"] /= 10  # example modification after reload
             model.components = [
                 Transmission.init_from_file(model.population, model.pars),
                 Progression.init_from_file(model.population, model.pars)
