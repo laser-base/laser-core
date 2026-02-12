@@ -18,7 +18,7 @@
 
 ## Getting Started
 
-We recommend using the [LASER documentation](https://laser.idmod.org/laser-core) to familiarize yourself with the LASER disease modeling framework. However, the instructions below may be sufficient for those who want to jump right in.
+We recommend using the [LASER documentation](https://laser.idmod.org/laser-generic) to familiarize yourself with the LASER disease modeling framework. However, the instructions below may be sufficient for those who want to jump right in.
 
 ### Standalone Installation
 
