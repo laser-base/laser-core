@@ -62,10 +62,10 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/InstituteforDiseaseModeling/laser"
-Issues = "https://github.com/InstituteforDiseaseModeling/laser/issues"
-Documentation = "https://docs.idmod.org/projects/laser/en/latest/"
-Changelog = "https://docs.idmod.org/projects/laser/en/latest/changelog.html"
+Homepage = "https://github.com/laser-base/laser-core"
+Issues = "https://github.com/laser-base/laser-core/issues"
+Documentation = "https://laser-base.github.io/laser-generic/"
+Changelog = "https://github.com/laser-base/laser-core/blob/main/CHANGELOG.rst"
 
 [build-system]
 requires = ["setuptools>=76.0"]

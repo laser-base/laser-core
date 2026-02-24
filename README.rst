@@ -19,9 +19,9 @@ Overview
     :target: https://docs.idmod.org/projects/laser/en/latest/
     :alt: Documentation Status
 
-.. |github-actions| image:: https://github.com/InstituteforDiseaseModeling/laser/actions/workflows/github-actions.yml/badge.svg
+.. |github-actions| image:: https://github.com/laser-base/laser-core/actions/workflows/github-actions.yml/badge.svg
     :alt: GitHub Actions Build Status
-    :target: https://github.com/InstituteforDiseaseModeling/laser/actions
+    :target: https://github.com/laser-base/laser-core/actions
 
 .. |codecov| image:: https://codecov.io/gh/InstituteforDiseaseModeling/laser/branch/main/graphs/badge.svg?branch=main
     :alt: Coverage Status
@@ -45,7 +45,7 @@ Overview
 
 .. |commits-since| image:: https://img.shields.io/github/commits-since/InstituteforDiseaseModeling/laser/v1.0.0.svg
     :alt: Commits since latest release
-    :target: https://github.com/InstituteforDiseaseModeling/laser/compare/v1.0.0...main
+    :target: https://github.com/laser-base/laser-core/compare/v1.0.0...main
 
 
 
@@ -64,7 +64,7 @@ Installation
 
 You can also install the in-development version with::
 
-    pip install https://github.com/InstituteforDiseaseModeling/laser/archive/main.zip
+    pip install https://github.com/laser-base/laser-core/archive/main.zip
 
 
 Documentation
