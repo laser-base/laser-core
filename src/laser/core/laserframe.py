@@ -347,8 +347,10 @@ class LaserFrame:
 
         Returns:
             frame (LaserFrame): The loaded LaserFrame object.
+
             results_r (np.ndarray or None): A 2D array of recovered counts with
                 shape (time, nodes), or None if not present in the snapshot.
+
             pars (dict): Dictionary of model parameters stored in the snapshot,
                 or empty if none are found.
 
