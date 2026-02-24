@@ -23,8 +23,8 @@ version = release = "1.0.0"
 pygments_style = "trac"
 templates_path = ["."]
 extlinks = {
-    "issue": ("https://github.com/InstituteforDiseaseModeling/laser/issues/%s", "#"),
-    "pr": ("https://github.com/InstituteforDiseaseModeling/laser/pull/%s", "PR #"),
+    "issue": ("https://github.com/laser-base/laser-core/issues/%s", "#"),
+    "pr": ("https://github.com/laser-base/laser-core/pull/%s", "PR #"),
 }
 # on_rtd is whether we are on readthedocs.org
 on_rtd = os.environ.get("READTHEDOCS", None) == "True"

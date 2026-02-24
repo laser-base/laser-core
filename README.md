@@ -6,7 +6,7 @@
 
 [![documentation](https://readthedocs.org/projects/idmlaser/badge/?style=flat)](https://docs.idmod.org/projects/laser/en/latest/)
 
-![tests](https://github.com/InstituteforDiseaseModeling/laser/actions/workflows/github-actions.yml/badge.svg)
+![tests](https://github.com/laser-base/laser-core/actions/workflows/github-actions.yml/badge.svg)
 
 [![package](https://img.shields.io/pypi/v/laser-core.svg)](https://pypi.org/project/laser-core/)
 ![wheel](https://img.shields.io/pypi/wheel/laser-core.svg)

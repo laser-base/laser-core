@@ -8,7 +8,7 @@ little bit helps, and credit will always be given.
 Bug reports
 ===========
 
-When `reporting a bug <https://github.com/InstituteforDiseaseModeling/laser/issues>`_ please include:
+When `reporting a bug <https://github.com/laser-base/laser-core/issues>`_ please include:
 
     * Your operating system name and version.
     * Any details about your local setup that might be helpful in troubleshooting.
@@ -24,7 +24,7 @@ articles, and such.
 Feature requests and feedback
 =============================
 
-The best way to send feedback is to file an issue at https://github.com/InstituteforDiseaseModeling/laser/issues.
+The best way to send feedback is to file an issue at https://github.com/laser-base/laser-core/issues.
 
 If you are proposing a feature:
 
@@ -37,11 +37,12 @@ Development
 
 To set up `laser` for local development:
 
-1. Fork `laser <https://github.com/InstituteforDiseaseModeling/laser>`_
+1. Fork `laser <https://github.com/laser-base/laser-core>`_
    (look for the "Fork" button).
+
 2. Clone your fork locally::
 
-    git clone git@github.com:YOURGITHUBNAME/laser.git
+    git clone git@github.com:YOURGITHUBNAME/laser-core.git
 
 3. Create a branch for local development::
 
