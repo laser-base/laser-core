@@ -24,7 +24,7 @@ jobs:
       - name: Set up Python (host, for cibuildwheel CLI)
         uses: actions/setup-python@v5
         with:
-          python-version: 3.13
+          python-version: 3.14
 
       - name: Install build tools
         run: python -m pip install -U pip build pytest cibuildwheel
@@ -32,7 +32,7 @@ jobs:
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
         env:
-          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-*"
+          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_SKIP: "*-musllinux_*"
 
