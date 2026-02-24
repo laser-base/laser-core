@@ -6,11 +6,13 @@ from typing import Union
 
 
 class PropertySet:
-    r"""A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
+    """A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
 
     Examples
     --------
     Basic Initialization:
+
+    ::
 
         from laser.core import PropertySet
         ps = PropertySet()
@@ -21,6 +23,8 @@ class PropertySet:
 
     Combining two PropertySets:
 
+    ::
+
         ps1 = PropertySet({'immunity': 'high', 'region': 'north'})
         ps2 = PropertySet({'infectivity': 0.7})
         combined_ps = ps1 + ps2
@@ -28,6 +32,8 @@ class PropertySet:
         # Outputs: {'immunity': 'high', 'region': 'north', 'infectivity': 0.7}
 
     Creating a PropertySet from a dictionary:
+
+    ::
 
         ps = PropertySet({'mything': 0.4, 'that_other_thing': 42})
         print(ps.mything)            # Outputs: 0.4
@@ -37,11 +43,15 @@ class PropertySet:
 
     Save and load:
 
+    ::
+
         ps.save('properties.json')
         loaded_ps = PropertySet.load('properties.json')
         print(loaded_ps.to_dict())  # Outputs the saved properties
 
     Property access and length:
+
+    ::
 
         ps['status'] = 'susceptible'
         ps['exposure_timer'] = 5
@@ -50,11 +60,15 @@ class PropertySet:
 
     In-Place addition (added keys must *not* exist in the destination PropertySet):
 
+    ::
+
         ps += {'new_timer': 10, 'susceptibility': 0.75}
         print(ps.to_dict())
         # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 5, 'new_timer': 10, 'susceptibility': 0.75}
 
     In-place update (keys *must* already exist in the destination PropertySet):
+
+    ::
 
         ps <<= {'exposure_timer': 10, 'infectivity': 0.8}
         print(ps.to_dict())
@@ -62,7 +76,9 @@ class PropertySet:
 
     In-place addition or update (no restriction on incoming keys):
 
-        ps \|= {'new_timer': 10, 'exposure_timer': 8}
+    ::
+
+        ps |= {'new_timer': 10, 'exposure_timer': 8}
         print(ps.to_dict())
         # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
 
