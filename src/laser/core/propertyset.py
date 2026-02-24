@@ -6,7 +6,7 @@ from typing import Union
 
 
 class PropertySet:
-    """A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
+    r"""A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
 
     Examples
     --------
@@ -62,7 +62,7 @@ class PropertySet:
 
     In-place addition or update (no restriction on incoming keys):
 
-        ps |= {'new_timer': 10, 'exposure_timer': 8}
+        ps \|= {'new_timer': 10, 'exposure_timer': 8}
         print(ps.to_dict())
         # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
 
