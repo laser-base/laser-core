@@ -37,7 +37,8 @@ dependencies = [
     "pandas",
     "h5py",
     "geopandas",
-    "shapely"
+    "shapely",
+    "uv>=0.10.5",
 ]
 
 [project.optional-dependencies]
@@ -46,8 +47,7 @@ dev = [
     "black",
     "flake8",
     "tox",
-    "tox-uv",
-    "uv"
+    "tox-uv"
 ]
 docs = [
     "sphinx>=1.3",
@@ -58,7 +58,8 @@ test = [
     "pytest>=6.0",
     "pytest-cov",
     "scipy",
-    "uv",
+    "tox",
+    "tox-uv"
 ]
 
 [project.urls]
