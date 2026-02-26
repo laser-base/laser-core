@@ -1,18 +1,18 @@
 Changelog
 =========
 
-1.0.0 (2024-12-XX)
+1.0.0 (2025-12-16)
 ------------------
 
 * Fix documentation link in README
 * Major version release with stable API
 
-0.9.1 (2024-11-XX)
+0.9.1 (2025-12-09)
 ------------------
 
 * Fix bug in initialize_population() function - wasn't handling lists correctly
 
-0.9.0 (2024-11-XX)
+0.9.0 (2025-12-09)
 ------------------
 
 * Add initialize_population() function to distribute population among states
@@ -20,7 +20,7 @@ Changelog
 * Update OS versions in CI workflow
 * Add tests for new population initialization features
 
-0.8.1 (2024-10-XX)
+0.8.1 (2025-12-08)
 ------------------
 
 * Fix PropertySet to correctly handle lists or tuples of key value pairs
@@ -29,7 +29,7 @@ Changelog
 * Fix up docstrings for MkDocs
 * Replace SortedQueue with Distributions in non-auto API reference
 
-0.8.0 (2024-10-XX)
+0.8.0 (2025-11-25)
 ------------------
 
 * Implement new calc_capacity() function using geometric Brownian motion
@@ -38,7 +38,7 @@ Changelog
 * Address caching issues with sample functions
 * CI improvements
 
-0.7.0 (2024-09-XX)
+0.7.0 (2025-10-30)
 ------------------
 
 * Add Numba-compatible distributions for model waiting times
@@ -56,19 +56,19 @@ Changelog
 * Adapt docs to shared top level domain change
 * Update docstring formatting for mkdocs build
 
-0.6.0 (2024-07-XX)
+0.6.0 (2025-07-24)
 ------------------
 
 * Fix snapshot capacity restoration
 * Fix cap reload functionality
 * Various bug fixes for snapshot handling
 
-0.5.1 (2024-06-XX)
+0.5.1 (2025-06-05)
 ------------------
 
 * Bug fixes for version 0.5.0
 
-0.5.0 (2024-06-XX)
+0.5.0 (2025-06-02)
 ------------------
 
 * Add save_snapshot and load_snapshot functionality
@@ -84,12 +84,15 @@ Changelog
 * Add spatial examples and migration samples
 * Build wheels with GitHub Actions
 
-0.4.0 (2024-04-XX)
+0.4.1 (2025-05-27)
+------------------
+
+0.4.0 (2025-01-31)
 ------------------
 
 * Remove NumPy and Numba version restrictions
 
-0.3.0 (2024-03-XX)
+0.3.0 (2025-01-28)
 ------------------
 
 * Add spatial reference support
@@ -100,7 +103,7 @@ Changelog
 * Add unit tests for utility functions
 * Cleanup pyproject.toml
 
-0.2.0 (2024-02-XX)
+0.2.0 (2025-01-15)
 ------------------
 
 * Add documentation content for architecture and design
@@ -108,14 +111,14 @@ Changelog
 * Documentation enhancements for GPT integration
 * Additional badges for PyPI
 
-0.1.1 (2024-01-XX)
+0.1.1 (2024-11-19)
 ------------------
 
 * Downgrade Numba dependency to 0.59.1
 * Point doc links to IDM sites
 * Update badge links
 
-0.1.0 (2024-01-XX)
+0.1.0 (2024-11-18)
 ------------------
 
 * Switch to bump-my-version for version management
@@ -124,15 +127,14 @@ Changelog
 * Update migration tests to use np.int64
 * Update documentation
 
-0.0.3 (2023-12-XX)
+0.0.3 (2024-11-05)
 ------------------
 
 * Add __setitem__ to PropertySet
 * Add __getitem__ to PropertySet
 * Modify coverage configuration to ignore if __name__ == "__main__"
-* Specialize sift functions by value type
 
-0.0.2 (2023-12-XX)
+0.0.2 (2024-11-04)
 ------------------
 
 * Add SortedQueue types
@@ -152,9 +154,4 @@ Changelog
 0.0.1 (2023-11-18)
 ------------------
 
-* First release on PyPI
 * Initial package structure
-* Rename package from idmlaser to laser-core/laser_core
-* Switch to pyproject.toml
-* Basic functionality for spatial modeling
-* Core LaserFrame, PropertySet, and utility functions
