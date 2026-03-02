@@ -190,6 +190,7 @@ jobs:
         CIBW_ARCHS: '${{ matrix.cibw_arch }}'
         CIBW_BUILD: '${{ matrix.cibw_build }}'
         CIBW_BUILD_VERBOSITY: '3'
+        CIBW_BEFORE_TEST: "python -m ensurepip --upgrade"
         CIBW_TEST_REQUIRES: >
           tox
           tox-direct
