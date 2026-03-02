@@ -219,7 +219,7 @@ def test_no_death_spike_at_boundary():
         early_d2 = d2[1 : FIXED_LIFESPAN + 1].mean()
 
         assert early_d2 > 0, "No deaths at all in seg2 — t_snap offset fix was not applied"
-        assert early_d2 < mean_d1 * 3, f"Death rate spike at boundary: seg1 mean={mean_d1:.1f}, " f"seg2 early mean={early_d2:.1f}"
+        assert early_d2 < mean_d1 * 1.5, f"Death rate spike at boundary: seg1 mean={mean_d1:.1f}, " f"seg2 early mean={early_d2:.1f}"
     finally:
         Path(snap_path).unlink(missing_ok=True)
 
