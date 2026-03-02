@@ -26,19 +26,19 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from laser.core import LaserFrame
 
 # ── Simulation constants ───────────────────────────────────────────────────────
 INIT_POP = 2_000
-FIXED_LIFESPAN = 40       # every agent lives exactly this many steps
+FIXED_LIFESPAN = 40  # every agent lives exactly this many steps
 BIRTH_RATE = 1.0 / FIXED_LIFESPAN  # births/person/step — holds population steady
 TOTAL_STEPS = 160
-SNAP_STEP = 80            # save snapshot here, midway through
+SNAP_STEP = 80  # save snapshot here, midway through
 
 
 # ── Minimal ABM helpers ────────────────────────────────────────────────────────
+
 
 def _make_frame(capacity: int, count: int, t_offset: int) -> LaserFrame:
     """Create a LaserFrame with date_of_death set relative to t_offset."""
@@ -63,7 +63,7 @@ def _run_segment(frame: LaserFrame, n_steps: int, t_start: int) -> np.ndarray:
         t_abs = t_start + step
 
         # Deaths: remove agents whose absolute death time has arrived
-        alive = frame.date_of_death[:frame.count] > t_abs
+        alive = frame.date_of_death[: frame.count] > t_abs
         frame.squash(alive)
 
         # Births: keep population near steady state
@@ -80,6 +80,7 @@ def _run_segment(frame: LaserFrame, n_steps: int, t_start: int) -> np.ndarray:
 
 # ── Flat run (ground truth) ────────────────────────────────────────────────────
 
+
 def _flat_run() -> tuple[np.ndarray, LaserFrame]:
     capacity = int(INIT_POP * 2)
     frame = _make_frame(capacity, INIT_POP, t_offset=0)
@@ -88,6 +89,7 @@ def _flat_run() -> tuple[np.ndarray, LaserFrame]:
 
 
 # ── Staged run (snapshot + reload) ────────────────────────────────────────────
+
 
 def _staged_run(snap_path: str) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -125,6 +127,7 @@ def _staged_run(snap_path: str) -> tuple[np.ndarray, np.ndarray]:
 
 # ── pytest tests ──────────────────────────────────────────────────────────────
 
+
 def test_date_of_death_all_positive_after_reload():
     """
     After reload, every agent's date_of_death is >= 1.
@@ -144,8 +147,7 @@ def test_date_of_death_all_positive_after_reload():
         assert pars["t_snap"] == SNAP_STEP
         assert loaded.count > 0
         assert np.all(loaded.date_of_death > 0), (
-            f"Some agents have date_of_death <= 0 after reload. "
-            f"Min value: {loaded.date_of_death.min()}"
+            f"Some agents have date_of_death <= 0 after reload. " f"Min value: {loaded.date_of_death.min()}"
         )
     finally:
         Path(snap_path).unlink(missing_ok=True)
@@ -187,8 +189,7 @@ def test_pop_final_continuity():
     try:
         pop_seg1, pop_seg2 = _staged_run(snap_path)
         assert pop_seg2[0] == pop_seg1[-1], (
-            f"Population discontinuity at boundary: "
-            f"end of seg1={pop_seg1[-1]}, start of seg2={pop_seg2[0]}"
+            f"Population discontinuity at boundary: " f"end of seg1={pop_seg1[-1]}, start of seg2={pop_seg2[0]}"
         )
     finally:
         Path(snap_path).unlink(missing_ok=True)
@@ -213,20 +214,18 @@ def test_no_death_spike_at_boundary():
         d1 = deaths_per_step(pop_seg1)
         d2 = deaths_per_step(pop_seg2)
 
-        mean_d1 = d1[1:].mean()   # skip step 0 (no deaths at t=0)
+        mean_d1 = d1[1:].mean()  # skip step 0 (no deaths at t=0)
         # Look at death rate in the early part of seg2 (within one lifespan)
         early_d2 = d2[1 : FIXED_LIFESPAN + 1].mean()
 
         assert early_d2 > 0, "No deaths at all in seg2 — t_snap offset fix was not applied"
-        assert early_d2 < mean_d1 * 3, (
-            f"Death rate spike at boundary: seg1 mean={mean_d1:.1f}, "
-            f"seg2 early mean={early_d2:.1f}"
-        )
+        assert early_d2 < mean_d1 * 3, f"Death rate spike at boundary: seg1 mean={mean_d1:.1f}, " f"seg2 early mean={early_d2:.1f}"
     finally:
         Path(snap_path).unlink(missing_ok=True)
 
 
 # ── Visual boundary check (run as script) ─────────────────────────────────────
+
 
 def _boundary_check(pop_seg1: np.ndarray, pop_seg2: np.ndarray) -> None:
     """Print a table of population values around the snapshot boundary."""
