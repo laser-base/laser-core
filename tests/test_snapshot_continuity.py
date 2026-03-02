@@ -3,6 +3,35 @@ test_snapshot_continuity.py
 
 Model-agnostic snapshot continuity test for LaserFrame.
 
+Background
+----------
+Multi-segment simulations save a snapshot mid-run and reload it to continue.
+Three bugs were found in laser-polio that traced back to the core snapshot
+infrastructure in LaserFrame rather than polio-specific logic:
+
+1. date_of_death offset
+   Agent death times are stored as absolute simulation timesteps.  When a
+   snapshot is reloaded into a new segment starting at t=0, those values are
+   still relative to the original run's timeline, so agents either live far
+   too long or die immediately.  Fix: save_snapshot(t=...) writes date_of_death
+   already offset by t (values - t, clamped to >= 1) so the loaded frame is
+   ready to use without post-load fixup.
+
+2. pop_final / population continuity
+   results.pop[0] is normally initialised from init_pop, which ignores all
+   births and deaths that occurred during the first segment and causes a visible
+   jump in the population time-series at the boundary.  Fix: save_snapshot
+   accepts pop_final (per-node population at snapshot time); load_snapshot
+   returns it in pars["pop_final"] so the caller can restore results.pop[0, :].
+
+3. keep_mask compaction
+   Saving a snapshot with large numbers of terminal-state agents (e.g. fully
+   recovered) wastes disk space and reload time.  Fix: save_snapshot accepts
+   keep_mask, calling squash() before writing.  Note this mutates the frame;
+   see save_snapshot docstring.
+
+Test design
+-----------
 Builds a minimal synthetic ABM with deterministic vital dynamics
 (fixed lifespan + constant birth rate) and runs it in two ways:
 
@@ -12,11 +41,12 @@ Builds a minimal synthetic ABM with deterministic vital dynamics
 The deterministic design (fixed lifespan, no stochastic variation) makes
 correctness easy to reason about without per-step PRNG alignment.
 
-Assertions verify the three concrete bugs documented in polio_snapshot_for_core.md:
-  1. date_of_death offset   — no agent dies at step 0 or earlier after reload
-  2. pop_final continuity   — population at start of seg2 == end of seg1
-  3. no death-rate spike    — deaths/step in first FIXED_LIFESPAN steps of seg2
-                              are within 50% of seg1's mean rate
+Tests cover the three save_snapshot features from laserframe.py:
+  date_of_death offset (t=)  — two tests: all dod > 0 after reload, and death
+                               rate in seg2 is continuous (no spike/silence)
+  pop_final continuity       — population at start of seg2 == end of seg1
+  keep_mask compaction       — squashing terminal-state agents before saving
+                               doesn't break the staged run
 
 Run as a script for a visual boundary check:
     python tests/test_snapshot_continuity.py
@@ -113,7 +143,7 @@ def _staged_run(snap_path: str) -> tuple[np.ndarray, np.ndarray]:
     capacity2 = int(loaded.count * 2)
     frame2 = LaserFrame(capacity=capacity2, initial_count=loaded.count)
     frame2.add_scalar_property("date_of_death", dtype=np.int32, default=0)
-    # date_of_death has already been offset to seg2's timeline by load_snapshot
+    # date_of_death was already offset to seg2's timeline by save_snapshot(t=)
     frame2.date_of_death[:] = loaded.date_of_death[:]
 
     pop_seg2 = _run_segment(frame2, seg2_steps, t_start=0)
@@ -180,16 +210,45 @@ def test_date_of_death_within_one_lifespan_after_reload():
 
 def test_pop_final_continuity():
     """
-    Population at the start of seg2 (pop_seg2[0]) equals population at the end
-    of seg1 (pop_seg1[-1]) when pop_final is used.
+    pars["pop_final"] carries the correct end-of-seg1 population and is what
+    restores continuity at the boundary.
+
+    The bug: a model initialises results.pop[0] from init_pop on every new
+    segment, ignoring all births and deaths from the previous segment.  This
+    test simulates that incorrect reset and shows that only applying pop_final
+    produces the correct boundary value.
     """
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         snap_path = tmp.name
     try:
-        pop_seg1, pop_seg2 = _staged_run(snap_path)
-        assert pop_seg2[0] == pop_seg1[-1], (
-            f"Population discontinuity at boundary: " f"end of seg1={pop_seg1[-1]}, start of seg2={pop_seg2[0]}"
+        capacity = int(INIT_POP * 2)
+        frame1 = _make_frame(capacity, INIT_POP, t_offset=0)
+        pop_seg1 = _run_segment(frame1, SNAP_STEP, t_start=0)
+
+        pop_final = np.array([frame1.count], dtype=np.int64)
+        frame1.save_snapshot(snap_path, t=SNAP_STEP, pop_final=pop_final)
+
+        loaded, _, pars = LaserFrame.load_snapshot(snap_path, cbr=None, nt=None)
+
+        seg2_steps = TOTAL_STEPS - SNAP_STEP
+        capacity2 = int(loaded.count * 2)
+        frame2 = LaserFrame(capacity=capacity2, initial_count=loaded.count)
+        frame2.add_scalar_property("date_of_death", dtype=np.int32, default=0)
+        frame2.date_of_death[:] = loaded.date_of_death[:]
+        pop_seg2 = _run_segment(frame2, seg2_steps, t_start=0)
+
+        # Simulate a model that resets its pop baseline to init_pop on reload,
+        # discarding all births and deaths from segment 1.
+        pop_seg2[0] = INIT_POP
+        assert pop_seg2[0] != pop_seg1[-1], (
+            "Test setup issue: INIT_POP equals the segment-1 final population; "
+            "choose simulation constants where the population drifts from its starting value."
         )
+
+        # Applying pars["pop_final"] restores the correct boundary value.
+        assert "pop_final" in pars
+        pop_seg2[0] = int(pars["pop_final"].sum())
+        assert pop_seg2[0] == pop_seg1[-1], f"pop_final did not restore boundary population: " f"expected {pop_seg1[-1]}, got {pop_seg2[0]}"
     finally:
         Path(snap_path).unlink(missing_ok=True)
 
@@ -219,6 +278,50 @@ def test_no_death_spike_at_boundary():
 
         assert early_d2 > 0, "No deaths at all in seg2 — t_snap offset fix was not applied"
         assert early_d2 < mean_d1 * 1.5, f"Death rate spike at boundary: seg1 mean={mean_d1:.1f}, " f"seg2 early mean={early_d2:.1f}"
+    finally:
+        Path(snap_path).unlink(missing_ok=True)
+
+
+def test_keep_mask_staged_run():
+    """
+    Squashing near-death agents with keep_mask before saving doesn't break continuity.
+
+    Agents with date_of_death <= SNAP_STEP + 2 are terminal — they would die within
+    the first two steps of seg2 anyway.  Squashing them before the snapshot reduces
+    file size and reload time without affecting downstream dynamics.  This test
+    verifies that the staged run still completes and that seg2 starts with exactly
+    the squashed count (no phantom agents appear on reload).
+    """
+    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
+        snap_path = tmp.name
+    try:
+        capacity = int(INIT_POP * 2)
+        frame1 = _make_frame(capacity, INIT_POP, t_offset=0)
+        _run_segment(frame1, SNAP_STEP, t_start=0)
+
+        # Identify agents that will die within 2 steps of the new segment start.
+        # After the t= offset, their date_of_death would be <= 2.
+        keep = (frame1.date_of_death[: frame1.count] - SNAP_STEP) > 2
+        expected_count_after_squash = int(keep.sum())
+        assert expected_count_after_squash < frame1.count, "No near-death agents to squash — test setup issue"
+
+        frame1.save_snapshot(snap_path, t=SNAP_STEP, keep_mask=keep)
+
+        loaded, _, _ = LaserFrame.load_snapshot(snap_path, cbr=None, nt=None)
+
+        # Snapshot contains only the kept agents
+        assert loaded.count == expected_count_after_squash
+
+        # Seg2 runs to completion without error
+        seg2_steps = TOTAL_STEPS - SNAP_STEP
+        capacity2 = int(loaded.count * 2)
+        frame2 = LaserFrame(capacity=capacity2, initial_count=loaded.count)
+        frame2.add_scalar_property("date_of_death", dtype=np.int32, default=0)
+        frame2.date_of_death[:] = loaded.date_of_death[:]
+        pop_seg2 = _run_segment(frame2, seg2_steps, t_start=0)
+
+        assert pop_seg2[0] == expected_count_after_squash
+        assert pop_seg2[-1] > 0  # population survives to end of seg2
     finally:
         Path(snap_path).unlink(missing_ok=True)
 

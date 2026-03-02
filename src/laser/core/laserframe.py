@@ -293,30 +293,33 @@ class LaserFrame:
             t (int, optional): Current simulation timestep. If provided and the frame
                 has a 'date_of_death' property, that field is written to the snapshot
                 already offset to the new segment's timeline (values minus t, clamped
-                to >= 1). The live frame is not mutated.
+                to >= 1). The offset is applied only to the data written to disk;
+                the in-memory frame is not modified.
             pop_final (np.ndarray, optional): 1-D array of final population counts per node
                 at the snapshot boundary. Returned via pars["pop_final"] on load so the
                 caller can restore results.pop[0, :] for a continuous population time-series.
             keep_mask (np.ndarray, optional): Boolean array of shape (count,). If provided,
                 squash(keep_mask) is called before writing to compact terminal-state agents
                 out of the snapshot (e.g. fully-recovered agents that no longer affect dynamics).
+                NOTE: this mutates the frame — count is reduced and scalar arrays are
+                compacted in place. Do not pass keep_mask if the frame is still needed
+                in its current state after this call.
         """
         from laser.core.propertyset import PropertySet  # to avoid circular import
 
         if keep_mask is not None:
             self.squash(keep_mask)
 
-        with h5py.File(path, "w") as f:
-            self._save(f, "people")
+        # Build overrides for _save: date_of_death is written already offset to the
+        # new segment's timeline so load_snapshot receives clean, ready-to-use values.
+        # Computing this before opening the file keeps the HDF5 write to a single pass.
+        overrides = None
+        if t is not None and "date_of_death" in self._properties:
+            dod = self._properties["date_of_death"]
+            overrides = {"date_of_death": np.maximum(dod[: self._count].astype(np.int64) - t, 1).astype(dod.dtype)}
 
-            # Write date_of_death already offset to the new segment's timeline so
-            # load_snapshot receives clean, ready-to-use values with no post-load fixup.
-            # We overwrite the dataset written by _save without touching the live frame.
-            if t is not None and "date_of_death" in self._properties:
-                dod = self._properties["date_of_death"]
-                adjusted = np.maximum(dod[: self._count].astype(np.int64) - t, 1).astype(dod.dtype)
-                del f["people"]["date_of_death"]
-                f["people"].create_dataset("date_of_death", data=adjusted)
+        with h5py.File(path, "w") as f:
+            self._save(f, "people", overrides=overrides)
 
             if results_r is not None:
                 f.create_dataset("recovered", data=results_r)
@@ -328,9 +331,13 @@ class LaserFrame:
                 data = pars.to_dict() if isinstance(pars, PropertySet) else pars
                 self._save_dict(data, f.create_group("pars"))
 
-    def _save(self, parent_group, name):
+    def _save(self, parent_group, name, overrides=None):
         """
         Internal method to save this LaserFrame under the given group name.
+
+        overrides (dict, optional): Maps property names to pre-computed arrays that
+            should be written in place of the live property data (e.g. an already-offset
+            date_of_death). Each value must have length == self._count.
         """
         group = parent_group.create_group(name)
         group.attrs["count"] = self._count
@@ -339,7 +346,8 @@ class LaserFrame:
         for name, data in self._properties.items():
             # Currently only saving scalar properties (implied by loading logic)
             if data.shape == (self._capacity,):
-                group.create_dataset(name, data=data[0 : self._count])
+                value = overrides[name] if (overrides and name in overrides) else data[0 : self._count]
+                group.create_dataset(name, data=value)
 
         return
 
