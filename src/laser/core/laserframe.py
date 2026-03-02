@@ -409,10 +409,10 @@ class LaserFrame:
             # Surface t_snap and pop_final in the pars dict so callers can use them
             # for model-specific continuity corrections (e.g. results.pop[0, :]).
             t_snap = int(f.attrs["t_snap"]) if "t_snap" in f.attrs else None
-            if t_snap is not None:
+            if t_snap is not None and "t_snap" not in pars:
                 pars["t_snap"] = t_snap
 
-            if "pop_final" in f:
+            if "pop_final" in f and "pop_final" not in pars:
                 pars["pop_final"] = f["pop_final"][()]
 
             # Validate that cbr and nt are both provided or both None
