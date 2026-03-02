@@ -131,8 +131,8 @@ def _staged_run(snap_path: str) -> tuple[np.ndarray, np.ndarray]:
 def test_date_of_death_all_positive_after_reload():
     """
     After reload, every agent's date_of_death is >= 1.
-    Without the t_snap offset fix, agents whose absolute death time is <= t_snap
-    would have date_of_death <= 0, causing immediate mass death at step 1.
+    save_snapshot offsets date_of_death at write time; without this, agents whose
+    absolute death time is <= t_snap would have date_of_death <= 0 and die immediately.
     """
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         snap_path = tmp.name
@@ -142,9 +142,8 @@ def test_date_of_death_all_positive_after_reload():
         _run_segment(frame1, SNAP_STEP, t_start=0)
         frame1.save_snapshot(snap_path, t=SNAP_STEP)
 
-        loaded, _, pars = LaserFrame.load_snapshot(snap_path, cbr=None, nt=None)
+        loaded, _, _ = LaserFrame.load_snapshot(snap_path, cbr=None, nt=None)
 
-        assert pars["t_snap"] == SNAP_STEP
         assert loaded.count > 0
         assert np.all(loaded.date_of_death > 0), (
             f"Some agents have date_of_death <= 0 after reload. " f"Min value: {loaded.date_of_death.min()}"

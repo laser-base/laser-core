@@ -670,67 +670,40 @@ class TestLaserFrame(unittest.TestCase):
 
         return
 
-    def test_t_snap_round_trip(self):
-        """t_snap saved with save_snapshot is returned in pars dict by load_snapshot."""
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            path = tmp.name
-        try:
-            frame = LaserFrame(capacity=100, initial_count=10)
-            frame.add_scalar_property("node_id", dtype=np.int32, default=0)
-            frame.save_snapshot(path, t=42)
-
-            _, _, pars = LaserFrame.load_snapshot(path, cbr=None, nt=None)
-            assert pars["t_snap"] == 42
-        finally:
-            Path(path).unlink()
-
-    def test_t_snap_absent_when_not_saved(self):
-        """When t is not passed to save_snapshot, t_snap is absent from loaded pars."""
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            path = tmp.name
-        try:
-            frame = LaserFrame(capacity=100, initial_count=10)
-            frame.add_scalar_property("node_id", dtype=np.int32, default=0)
-            frame.save_snapshot(path)
-
-            _, _, pars = LaserFrame.load_snapshot(path, cbr=None, nt=None)
-            assert "t_snap" not in pars
-        finally:
-            Path(path).unlink()
-
-    def test_date_of_death_offset_on_load(self):
-        """load_snapshot subtracts t_snap from date_of_death and clamps to >= 1."""
+    def test_date_of_death_offset_at_save_time(self):
+        """save_snapshot with t= writes offset date_of_death values; live frame is unchanged."""
         with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
             path = tmp.name
         try:
             count = 5
-            t_snap = 10
+            t = 10
             frame = LaserFrame(capacity=count, initial_count=count)
             frame.add_scalar_property("date_of_death", dtype=np.int32, default=0)
-            # Absolute death times in sim1's timeline
-            frame.date_of_death[:] = np.array([12, 15, 20, 25, 30], dtype=np.int32)
-            frame.save_snapshot(path, t=t_snap)
+            original = np.array([12, 15, 20, 25, 30], dtype=np.int32)
+            frame.date_of_death[:] = original
+            frame.save_snapshot(path, t=t)
 
+            # Snapshot values are already offset
             loaded, _, _ = LaserFrame.load_snapshot(path, cbr=None, nt=None)
-
-            # Expected: subtract t_snap, clamp to >= 1
-            expected = np.maximum(np.array([12, 15, 20, 25, 30]) - t_snap, 1)
+            expected = np.maximum(original - t, 1)
             assert np.array_equal(loaded.date_of_death, expected)
+
+            # Live frame is not mutated
+            assert np.array_equal(frame.date_of_death, original)
         finally:
             Path(path).unlink()
 
-    def test_date_of_death_clamped_to_one(self):
-        """date_of_death values that would go <= 0 after offset are clamped to 1."""
+    def test_date_of_death_clamped_to_one_at_save_time(self):
+        """date_of_death values that would go <= 0 after offset are clamped to 1 in the snapshot."""
         with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
             path = tmp.name
         try:
             count = 3
-            t_snap = 50
+            t = 50
             frame = LaserFrame(capacity=count, initial_count=count)
             frame.add_scalar_property("date_of_death", dtype=np.int32, default=0)
-            # All of these are <= t_snap, so they should clamp to 1
             frame.date_of_death[:] = np.array([48, 50, 51], dtype=np.int32)
-            frame.save_snapshot(path, t=t_snap)
+            frame.save_snapshot(path, t=t)
 
             loaded, _, _ = LaserFrame.load_snapshot(path, cbr=None, nt=None)
 
@@ -740,8 +713,8 @@ class TestLaserFrame(unittest.TestCase):
         finally:
             Path(path).unlink()
 
-    def test_date_of_death_not_offset_without_t_snap(self):
-        """date_of_death is not modified when save_snapshot is called without t."""
+    def test_date_of_death_not_offset_without_t(self):
+        """date_of_death in the snapshot is unchanged when save_snapshot is called without t."""
         with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
             path = tmp.name
         try:

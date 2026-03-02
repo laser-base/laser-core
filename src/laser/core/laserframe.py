@@ -290,8 +290,10 @@ class LaserFrame:
             path (Path): Destination file path
             results_r (np.ndarray): Optional 2D numpy array of recovered counts
             pars (PropertySet or dict): Optional PropertySet or dict of parameters
-            t (int, optional): Current simulation timestep. Saved as 't_snap' and used
-                by load_snapshot to offset absolute-time agent fields (e.g. date_of_death).
+            t (int, optional): Current simulation timestep. If provided and the frame
+                has a 'date_of_death' property, that field is written to the snapshot
+                already offset to the new segment's timeline (values minus t, clamped
+                to >= 1). The live frame is not mutated.
             pop_final (np.ndarray, optional): 1-D array of final population counts per node
                 at the snapshot boundary. Returned via pars["pop_final"] on load so the
                 caller can restore results.pop[0, :] for a continuous population time-series.
@@ -307,11 +309,17 @@ class LaserFrame:
         with h5py.File(path, "w") as f:
             self._save(f, "people")
 
+            # Write date_of_death already offset to the new segment's timeline so
+            # load_snapshot receives clean, ready-to-use values with no post-load fixup.
+            # We overwrite the dataset written by _save without touching the live frame.
+            if t is not None and "date_of_death" in self._properties:
+                dod = self._properties["date_of_death"]
+                adjusted = np.maximum(dod[: self._count].astype(np.int64) - t, 1).astype(dod.dtype)
+                del f["people"]["date_of_death"]
+                f["people"].create_dataset("date_of_death", data=adjusted)
+
             if results_r is not None:
                 f.create_dataset("recovered", data=results_r)
-
-            if t is not None:
-                f.attrs["t_snap"] = int(t)
 
             if pop_final is not None:
                 f.create_dataset("pop_final", data=pop_final)
@@ -371,7 +379,6 @@ class LaserFrame:
             pars (dict): Dictionary of model parameters stored in the snapshot,
                 or empty if none are found. Also contains any of the following
                 keys written by save_snapshot:
-                  - "t_snap" (int): The timestep at which the snapshot was saved.
                   - "pop_final" (np.ndarray): Final per-node population counts at
                     the snapshot boundary; use to restore results.pop[0, :] for
                     a continuous population time-series across the boundary.
@@ -385,11 +392,9 @@ class LaserFrame:
             - Snapshots must contain a per-agent 'node_id' property.
             - The recovered array is assumed to be in (time, node) layout.
             - The capacity estimate includes both current and recovered agents at t=0.
-            - If 't_snap' is present in the snapshot, the 'date_of_death' agent
-              property is automatically offset by subtracting t_snap and clamped
-              to >= 1. Only the field named exactly 'date_of_death' is adjusted
-              automatically; other absolute-time fields must be corrected by the
-              caller using pars["t_snap"].
+            - If save_snapshot was called with t=, the 'date_of_death' field in the
+              snapshot is already offset to the new segment's timeline and requires
+              no further adjustment on load.
         """
         with h5py.File(path, "r") as f:
             group = f["people"]
@@ -406,13 +411,7 @@ class LaserFrame:
             else:
                 pars = {}
 
-            # Surface t_snap and pop_final in the pars dict so callers can use them
-            # for model-specific continuity corrections (e.g. results.pop[0, :]).
-            t_snap = int(f.attrs["t_snap"]) if "t_snap" in f.attrs else None
-            if t_snap is not None and "t_snap" not in pars:
-                pars["t_snap"] = t_snap
-
-            if "pop_final" in f and "pop_final" not in pars:
+            if "pop_final" in f:
                 pars["pop_final"] = f["pop_final"][()]
 
             # Validate that cbr and nt are both provided or both None
@@ -481,17 +480,6 @@ class LaserFrame:
                 getattr(frame, key)[:count] = data
 
             results_r = f["recovered"][()] if "recovered" in f else None
-
-        # Offset date_of_death by t_snap so agent death times are correct in the
-        # new segment's timeline (t starting at 0). Clamp to >= 1 so no agent is
-        # scheduled to die at or before the first step.
-        #
-        # NOTE: This only fires for the field named exactly 'date_of_death'. Other
-        # absolute-time agent properties are model-specific and must be corrected by
-        # the caller using pars["t_snap"]. This is a known fragility.
-        if t_snap is not None and "date_of_death" in frame._properties:
-            frame.date_of_death[:] -= t_snap
-            frame.date_of_death[:] = np.maximum(frame.date_of_death[:], 1)
 
         return frame, results_r, pars
 
