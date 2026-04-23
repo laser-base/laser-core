@@ -94,15 +94,14 @@ jobs:
         CIBW_ARCHS: '${{ matrix.cibw_arch }}'
         CIBW_BUILD: '${{ matrix.cibw_build }}'
         CIBW_BUILD_VERBOSITY: '3'
-        CIBW_TEST_REQUIRES: >
-          tox
-          tox-direct
+        CIBW_BEFORE_TEST: "python -m ensurepip --upgrade"
+        CIBW_TEST_REQUIRES: tox>=4
         CIBW_TEST_COMMAND: >
           cd {project} &&
-          tox --skip-pkg-install --direct-yolo -e ${{ matrix.tox_env }} -v
+          tox -e ${{ matrix.tox_env }} -v
         CIBW_TEST_COMMAND_WINDOWS: >
           cd /d {project} &&
-          tox --skip-pkg-install --direct-yolo -e ${{ matrix.tox_env }} -v
+          tox -e ${{ matrix.tox_env }} -v
     - name: regular build and test
       env:
         TOXPYTHON: '${{ matrix.toxpython }}'
