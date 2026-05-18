@@ -183,19 +183,8 @@ class KaplanMeierEstimator:
 # Separately, consider two versions of this function, one returning uint8 (for use in
 # predict_year_of_death) and the other uint16 (for use in predict_age_at_death).
 @nb.njit(
-    [
-        (nb.int8[:], nb.uint32[:], nb.uint32),
-        (nb.int16[:], nb.uint32[:], nb.uint32),
-        (nb.int32[:], nb.uint32[:], nb.uint32),
-        (nb.int64[:], nb.uint32[:], nb.uint32),
-        (nb.uint8[:], nb.uint32[:], nb.uint32),
-        (nb.uint16[:], nb.uint32[:], nb.uint32),
-        (nb.uint32[:], nb.uint32[:], nb.uint32),
-        (nb.uint64[:], nb.uint32[:], nb.uint32),
-        (nb.float32[:], nb.uint32[:], nb.uint32),
-        (nb.float64[:], nb.uint32[:], nb.uint32),
-    ],
     parallel=True,
+    cache=True
 )
 def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.uint32 = 100):  # pragma: no cover
     """
@@ -230,17 +219,8 @@ def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.ui
 
 
 @nb.njit(
-    [
-        (nb.int16[:], nb.uint16[:], nb.int16[:]),
-        (nb.int32[:], nb.uint16[:], nb.int32[:]),
-        (nb.int64[:], nb.uint16[:], nb.int64[:]),
-        (nb.uint16[:], nb.uint16[:], nb.uint16[:]),
-        (nb.uint32[:], nb.uint16[:], nb.uint32[:]),
-        (nb.uint64[:], nb.uint16[:], nb.uint64[:]),
-        (nb.float32[:], nb.uint16[:], nb.float32[:]),
-        (nb.float64[:], nb.uint16[:], nb.float64[:]),
-    ],
     parallel=True,
+    cache=True
 )
 def _pdod(age_in_days: np.ndarray, year_of_death: np.ndarray, day_of_death: np.ndarray):  # pragma: no cover
     n = age_in_days.shape[0]
