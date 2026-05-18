@@ -14,14 +14,14 @@ maintainers = [
 description = "Core functionality for the Light Agent Spatial modeling for ERadication toolkit (LASER)."
 readme = "README.rst"
 license = "MIT"
-requires-python = ">=3.9,<3.15"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.15"
 keywords = ["spatial modeling", "disease eradication", "agent-based modeling"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,7 +30,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-    "click", # ==8.1.7",
+    "click",
     "numpy",
     "numba",
     "matplotlib",
@@ -69,8 +69,43 @@ Documentation = "https://laser-base.github.io/laser-generic/"
 Changelog = "https://github.com/laser-base/laser-core/blob/main/CHANGELOG.rst"
 
 [build-system]
-requires = ["setuptools>=76.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.11.7,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "laser.core"
+source-include = [
+    "AUTHORS.rst",
+    "CHANGELOG.rst",
+    "CONTRIBUTING.rst",
+    "*.md",
+    "ci/**",
+    "docs/**",
+    "examples/**",
+    "tests/**",
+]
+source-exclude = [
+    ".bumpversion.cfg",
+    ".cookiecutterrc",
+    ".coveragerc",
+    ".editorconfig",
+    ".github/workflows/github-actions.yml",
+    ".pre-commit-config.yaml",
+    ".readthedocs.yml",
+    "notes.md",
+    "pytest.ini",
+    "tox.ini",
+    "uv.lock",
+    "*.so",
+    "*.dylib",
+    ".DS_Store",
+]
+wheel-exclude = [
+    "ci/**",
+    "docs/**",
+    "examples/**",
+    "tests/**",
+]
 
 [tool.ruff.per-file-ignores]
 "ci/*" = ["S"]
@@ -127,18 +162,8 @@ exclude_also = [
     "if __name__ == .__main__.:",
     ]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-"laser.core" = ["*.c"]
-"tests" = ["data/*.csv"]
-
 [tool.bumpversion]
-current_version = "1.0.1"
+current_version = "1.1.3"
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
 serialize = ["{major}.{minor}.{patch}"]
 search = "{current_version}"
@@ -148,10 +173,10 @@ ignore_missing_version = false
 tag = true
 sign_tags = false
 tag_name = "v{new_version}"
-tag_message = "Bump version: {current_version} → {new_version}"
+tag_message = "🔖 Bump version: {current_version} → {new_version}"
 allow_dirty = false
 commit = true
-message = "Bump version: {current_version} → {new_version}"
+message = "🔖 Bump version: {current_version} → {new_version}"
 commit_args = ""
 
 [[tool.bumpversion.files]]
@@ -188,8 +213,3 @@ replace = 'version = release = "{new_version}"'
 filename = "src/laser/core/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = ".cookiecutterrc"
-search = 'version: "{current_version}"'
-replace = 'version: "{new_version}"'
