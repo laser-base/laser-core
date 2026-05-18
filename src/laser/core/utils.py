@@ -1,5 +1,5 @@
 """
-This module provides utility functions for the laser-measles project.
+This module provides utility functions for the laser-core project.
 
 Functions:
     calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
