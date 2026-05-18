@@ -178,14 +178,7 @@ class KaplanMeierEstimator:
         return age_at_death
 
 
-# Technically, we shouldn't allow any signed inputs because what would a negative age mean?
-# int8 is the most limited, but 127 is enough for a reasonable maximum age in years.
-# Separately, consider two versions of this function, one returning uint8 (for use in
-# predict_year_of_death) and the other uint16 (for use in predict_age_at_death).
-@nb.njit(
-    parallel=True,
-    cache=True
-)
+@nb.njit(parallel=True, cache=True)
 def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.uint32 = 100):  # pragma: no cover
     """
     Calculate the predicted year of death based on the given ages in years.
@@ -218,10 +211,7 @@ def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.ui
     return ysod
 
 
-@nb.njit(
-    parallel=True,
-    cache=True
-)
+@nb.njit(parallel=True, cache=True)
 def _pdod(age_in_days: np.ndarray, year_of_death: np.ndarray, day_of_death: np.ndarray):  # pragma: no cover
     n = age_in_days.shape[0]
     for i in nb.prange(n):
