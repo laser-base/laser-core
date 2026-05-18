@@ -282,7 +282,7 @@ class LaserFrame:
 
         return
 
-    def save_snapshot(self, path, results_r=None, pars=None):
+    def save_snapshot(self, path, results_r=None, pars=None, t=None, pop_final=None, keep_mask=None):
         """
         Save this LaserFrame and optional extras to an HDF5 snapshot file.
 
@@ -290,22 +290,54 @@ class LaserFrame:
             path (Path): Destination file path
             results_r (np.ndarray): Optional 2D numpy array of recovered counts
             pars (PropertySet or dict): Optional PropertySet or dict of parameters
+            t (int, optional): Current simulation timestep. If provided and the frame
+                has a 'date_of_death' property, that field is written to the snapshot
+                already offset to the new segment's timeline (values minus t, clamped
+                to >= 1). The offset is applied only to the data written to disk;
+                the in-memory frame is not modified.
+            pop_final (np.ndarray, optional): 1-D array of final population counts per node
+                at the snapshot boundary. Returned via pars["pop_final"] on load so the
+                caller can restore results.pop[0, :] for a continuous population time-series.
+            keep_mask (np.ndarray, optional): Boolean array of shape (count,). If provided,
+                squash(keep_mask) is called before writing to compact terminal-state agents
+                out of the snapshot (e.g. fully-recovered agents that no longer affect dynamics).
+                NOTE: this mutates the frame — count is reduced and scalar arrays are
+                compacted in place. Do not pass keep_mask if the frame is still needed
+                in its current state after this call.
         """
         from laser.core.propertyset import PropertySet  # to avoid circular import
 
+        if keep_mask is not None:
+            self.squash(keep_mask)
+
+        # Build overrides for _save: date_of_death is written already offset to the
+        # new segment's timeline so load_snapshot receives clean, ready-to-use values.
+        # Computing this before opening the file keeps the HDF5 write to a single pass.
+        overrides = None
+        if t is not None and "date_of_death" in self._properties:
+            dod = self._properties["date_of_death"]
+            overrides = {"date_of_death": np.maximum(dod[: self._count].astype(np.int64) - t, 1).astype(dod.dtype)}
+
         with h5py.File(path, "w") as f:
-            self._save(f, "people")
+            self._save(f, "people", overrides=overrides)
 
             if results_r is not None:
                 f.create_dataset("recovered", data=results_r)
+
+            if pop_final is not None:
+                f.create_dataset("pop_final", data=pop_final)
 
             if pars is not None and isinstance(pars, (dict, PropertySet)):
                 data = pars.to_dict() if isinstance(pars, PropertySet) else pars
                 self._save_dict(data, f.create_group("pars"))
 
-    def _save(self, parent_group, name):
+    def _save(self, parent_group, name, overrides=None):
         """
         Internal method to save this LaserFrame under the given group name.
+
+        overrides (dict, optional): Maps property names to pre-computed arrays that
+            should be written in place of the live property data (e.g. an already-offset
+            date_of_death). Each value must have length == self._count.
         """
         group = parent_group.create_group(name)
         group.attrs["count"] = self._count
@@ -314,7 +346,8 @@ class LaserFrame:
         for name, data in self._properties.items():
             # Currently only saving scalar properties (implied by loading logic)
             if data.shape == (self._capacity,):
-                group.create_dataset(name, data=data[0 : self._count])
+                value = overrides[name] if (overrides and name in overrides) else data[0 : self._count]
+                group.create_dataset(name, data=value)
 
         return
 
@@ -352,7 +385,11 @@ class LaserFrame:
                 shape (time, nodes), or None if not present in the snapshot.
 
             pars (dict): Dictionary of model parameters stored in the snapshot,
-                or empty if none are found.
+                or empty if none are found. Also contains any of the following
+                keys written by save_snapshot:
+                  - "pop_final" (np.ndarray): Final per-node population counts at
+                    the snapshot boundary; use to restore results.pop[0, :] for
+                    a continuous population time-series across the boundary.
 
         Raises:
             ValueError: If only one of cbr or nt is provided.
@@ -363,6 +400,9 @@ class LaserFrame:
             - Snapshots must contain a per-agent 'node_id' property.
             - The recovered array is assumed to be in (time, node) layout.
             - The capacity estimate includes both current and recovered agents at t=0.
+            - If save_snapshot was called with t=, the 'date_of_death' field in the
+              snapshot is already offset to the new segment's timeline and requires
+              no further adjustment on load.
         """
         with h5py.File(path, "r") as f:
             group = f["people"]
@@ -378,6 +418,9 @@ class LaserFrame:
                 pars.update({key: (val.decode() if isinstance(val, bytes) else val) for key, val in pars_group.attrs.items()})
             else:
                 pars = {}
+
+            if "pop_final" in f:
+                pars["pop_final"] = f["pop_final"][()]
 
             # Validate that cbr and nt are both provided or both None
             if (cbr is None) != (nt is None):
