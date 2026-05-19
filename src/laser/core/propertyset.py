@@ -198,7 +198,7 @@ class PropertySet:
             ValueError: If `other` contains keys already present in the PropertySet.
         """
 
-        assert isinstance(other, (type(self), dict))
+        assert isinstance(other, type(self) | dict)
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if hasattr(self, key):
                 raise ValueError(f"Cannot override existing value for '{key}'.")
@@ -240,7 +240,7 @@ class PropertySet:
             ValueError: If `other` contains keys not present in the PropertySet.
         """
 
-        assert isinstance(other, (type(self), dict))
+        assert isinstance(other, type(self) | dict)
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if not hasattr(self, key):
                 raise ValueError(f"Cannot override missing key '{key}'.")
@@ -280,7 +280,7 @@ class PropertySet:
             AssertionError: If `other` is neither an instance of the same class nor a dictionary.
         """
 
-        assert isinstance(other, (type(self), dict))
+        assert isinstance(other, type(self) | dict)
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             # no check on existence in self, all keys added or updated
             setattr(self, key, value)

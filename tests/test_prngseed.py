@@ -164,7 +164,7 @@ class TestRandomSeed(unittest.TestCase):
         results1 = [functions[which[i]](counts[i]) for i in range(1024)]
         prng = seed(20241015)
         results2 = [functions[which[i]](counts[i]) for i in range(1024)]
-        for result1, result2 in zip(results1, results2):
+        for result1, result2 in zip(results1, results2, strict=True):
             assert np.array_equal(result1, result2)
 
         return
@@ -198,7 +198,7 @@ class TestRandomSeed(unittest.TestCase):
         results1 = [functions[which[i]](counts[i]) for i in range(1024)]
         prng = seed(get_seed())
         results2 = [functions[which[i]](counts[i]) for i in range(1024)]
-        for result1, result2 in zip(results1, results2):
+        for result1, result2 in zip(results1, results2, strict=True):
             assert np.array_equal(result1, result2)
 
         return

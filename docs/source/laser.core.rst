@@ -28,14 +28,6 @@ laser.core.distributions module
    :show-inheritance:
    :undoc-members:
 
-laser.core.extension module
----------------------------
-
-.. automodule:: laser.core.extension
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 laser.core.laserframe module
 ----------------------------
 
