@@ -1,14 +1,14 @@
-__version__ = "1.0.1"
+from importlib.metadata import version
 
-from .extension import compiled
 from .laserframe import LaserFrame
 from .propertyset import PropertySet
 from .sortedqueue import SortedQueue
+
+__version__ = version("laser.core")
 
 __all__ = [
     "LaserFrame",
     "PropertySet",
     "SortedQueue",
     "__version__",
-    "compiled",
 ]

@@ -66,7 +66,8 @@ jobs:
         run: |
           git status
           if gh release view "${{ github.ref_name }}" &>/dev/null; then
-            gh release upload --clobber "${{ github.ref_name }}" dist/* \
+            gh release upload --clobber "${{ github.ref_name }}" dist/*
+            gh release edit "${{ github.ref_name }}" \
               --notes "Updated release for ${{ github.ref_name }}"
           else
             gh release create "${{ github.ref_name }}" dist/* \

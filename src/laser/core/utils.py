@@ -10,8 +10,6 @@ Functions:
 
 """
 
-from typing import Union
-
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
@@ -137,7 +135,7 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
     return gdf
 
 
-def initialize_population(grid, initial: Union[list, np.ndarray], states=None):
+def initialize_population(grid, initial: list | np.ndarray, states=None):
     """
     Initialize the population states in the grid based on the initial state counts provided.
 

@@ -18,14 +18,13 @@ Usage example:
 
 from pathlib import Path
 from typing import Any
-from typing import Union
 
 import numba as nb
 import numpy as np
 
 
 class KaplanMeierEstimator:
-    def __init__(self, source: Union[np.ndarray, list, Path, str]) -> None:
+    def __init__(self, source: np.ndarray | list | Path | str) -> None:
         """
         Initializes the KMEstimator with the given source data.
 

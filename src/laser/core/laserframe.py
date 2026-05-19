@@ -58,13 +58,13 @@ class LaserFrame:
             ValueError: If capacity or initial_count is not a positive integer,
                         or if initial_count is greater than capacity.
         """
-        if not isinstance(capacity, (int, np.integer)) or capacity <= 0:
+        if not isinstance(capacity, int | np.integer) or capacity <= 0:
             raise ValueError(f"Capacity must be a positive integer, got {capacity}.")
 
         if initial_count == -1:
             initial_count = capacity
 
-        if not isinstance(initial_count, (int, np.integer)) or initial_count < 0:
+        if not isinstance(initial_count, int | np.integer) or initial_count < 0:
             raise ValueError(f"Initial count must be a non-negative integer, got {initial_count}.")
 
         if initial_count > capacity:
@@ -299,7 +299,7 @@ class LaserFrame:
             if results_r is not None:
                 f.create_dataset("recovered", data=results_r)
 
-            if pars is not None and isinstance(pars, (dict, PropertySet)):
+            if pars is not None and isinstance(pars, dict | PropertySet):
                 data = pars.to_dict() if isinstance(pars, PropertySet) else pars
                 self._save_dict(data, f.create_group("pars"))
 

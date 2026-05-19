@@ -108,7 +108,9 @@ class TestMigrationFunctions(unittest.TestCase):
         normalized = row_normalizer(network, max_rowsum)
         assert np.all(np.isclose(normalized, expected)), (
             "mismatch(es): \n\t"
-            + "\n\t".join(str((idx, normalized[idx], expected[idx])) for idx in zip(*np.where(~np.isclose(normalized, expected)))),
+            + "\n\t".join(
+                str((idx, normalized[idx], expected[idx])) for idx in zip(*np.where(~np.isclose(normalized, expected)), strict=True)
+            ),
         )
 
         return
@@ -126,7 +128,9 @@ class TestMigrationFunctions(unittest.TestCase):
         normalized = row_normalizer(network, max_rowsum)
         assert np.all(np.isclose(normalized, expected)), (
             "mismatch(es): \n\t"
-            + "\n\t".join(str((idx, normalized[idx], expected[idx])) for idx in zip(*np.where(~np.isclose(normalized, expected)))),
+            + "\n\t".join(
+                str((idx, normalized[idx], expected[idx])) for idx in zip(*np.where(~np.isclose(normalized, expected)), strict=True)
+            ),
         )
 
         return

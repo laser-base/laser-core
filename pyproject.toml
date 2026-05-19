@@ -14,14 +14,13 @@ maintainers = [
 description = "Core functionality for the Light Agent Spatial modeling for ERadication toolkit (LASER)."
 readme = "README.rst"
 license = "MIT"
-requires-python = ">=3.9,<3.15"
+requires-python = ">=3.10,<3.15"
 keywords = ["spatial modeling", "disease eradication", "agent-based modeling"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -69,8 +68,23 @@ Documentation = "https://laser-base.github.io/laser-generic/"
 Changelog = "https://github.com/laser-base/laser-core/blob/main/CHANGELOG.rst"
 
 [build-system]
-requires = ["setuptools>=76.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.10.0,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = [ "laser.core" ]
+source-include = [
+    "AUTHORS.rst",
+    "CHANGELOG.rst",
+    "CONTRIBUTING.rst",
+    "LICENSE",
+    "README.rst",
+    "README.md",
+    "notes.md",
+    "examples/",
+    "docs/",
+    "tests/",
+]
 
 [tool.ruff.per-file-ignores]
 "ci/*" = ["S"]
@@ -107,7 +121,7 @@ select = [
     "W", # pycodestyle warnings
 ]
 src = ["src", "tests"]
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.flake8-pytest-style]
 fixture-parentheses = false
@@ -119,23 +133,13 @@ force-single-line = true
 
 [tool.black]
 line-length = 140
-target-version = ["py39"]
+target-version = ["py310"]
 
 # sample here: https://coverage.readthedocs.io/en/latest/excluding.html
 [tool.coverage.report]
 exclude_also = [
     "if __name__ == .__main__.:",
     ]
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-"laser.core" = ["*.c"]
-"tests" = ["data/*.csv"]
 
 [tool.bumpversion]
 current_version = "1.0.1"
@@ -183,13 +187,3 @@ replace = "/v{new_version}...main"
 filename = "docs/conf.py"
 search = 'version = release = "{current_version}"'
 replace = 'version = release = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = "src/laser/core/__init__.py"
-search = '__version__ = "{current_version}"'
-replace = '__version__ = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = ".cookiecutterrc"
-search = 'version: "{current_version}"'
-replace = 'version: "{new_version}"'
