@@ -1,6 +1,37 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+* Vectorize ``competing_destinations`` (removed O(N^2) Python double loop) and
+  ``distance`` (removed per-row Python loop); add bit-equivalence regression
+  tests pinning the new implementations to the prior looped behavior.
+* Add a ``benchmarks/`` directory with ``pytest-benchmark`` cases for the
+  migration models, distributions, ``KaplanMeierEstimator``, and ``SortedQueue``.
+* Surface ``demographics``, ``distributions``, ``migration``, ``random``, and
+  ``utils`` submodules from ``laser.core.__init__`` so they can be reached
+  without spelunking; flesh out ``docs/usage.rst`` with a runnable quick-start.
+* Add per-folder ``README.md`` files under ``src/laser/core/``,
+  ``src/laser/core/demographics/``, ``examples/``, and ``benchmarks/`` to
+  document each area's public surface.
+* Add a ``CLAUDE.md`` at the repo root summarizing project conventions, dev
+  workflow, and the canonical public API surface (AI-assistant orientation).
+* Replace bare ``assert`` calls in ``calc_capacity`` with ``ValueError`` so
+  input validation survives ``python -O``.
+* Extract the duplicated input-validation helpers (``_is_instance``,
+  ``_is_dtype``, ``_has_shape``, ``_has_dimensions``, ``_has_values``) into a
+  new package-private ``laser.core._validation`` module; ``migration`` and
+  ``laserframe`` now import from it.
+* Add docstrings to ``AliasedDistribution.__init__``, the
+  ``alias``/``probs``/``total`` properties on ``AliasedDistribution``,
+  ``_pdod`` in ``kmestimator``, and ``sum_populations_as_close_or_closer`` in
+  ``migration``.
+* Add lower-bound ``>=`` version pins on core runtime dependencies
+  (``click``, ``numpy``, ``numba``, ``matplotlib``, ``pandas``, ``h5py``,
+  ``geopandas``, ``shapely``) in ``pyproject.toml`` matching the versions
+  currently exercised on CI / pinned in ``uv.lock``.
+
 1.0.0 (2025-12-16)
 ------------------
 

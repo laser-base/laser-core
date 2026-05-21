@@ -853,5 +853,82 @@ class TestsForOverflow(unittest.TestCase):
         return
 
 
+class TestMigrationVectorizationRegression(unittest.TestCase):
+    """Regression tests pinning the vectorized implementations of competing_destinations and distance.
+
+    Given an N-node spatial input, when the vectorized helpers run, then their output must
+    match an independent reference implemented in this test file using plain Python loops.
+
+    A failure here implies the vectorization in `migration.py` diverges from the original
+    semantics, which would silently break downstream calibrations and published-result
+    reproducibility.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(seed=20260514)
+        n = 8
+        cls.pops = rng.integers(10_000, 1_000_000, size=n).astype(np.float64)
+        cls.lat = rng.uniform(-60.0, 60.0, size=n)
+        cls.lon = rng.uniform(-150.0, 150.0, size=n)
+        cls.distances = distance(cls.lat, cls.lon)
+        return
+
+    @staticmethod
+    def _reference_distance(lat1, lon1, lat2, lon2):
+        """Loop-based reference Haversine; mirrors the prior implementation exactly."""
+        lat1 = np.radians(np.asarray(lat1).flatten())
+        lon1 = np.radians(np.asarray(lon1).flatten())
+        lat2 = np.radians(np.asarray(lat2).flatten())
+        lon2 = np.radians(np.asarray(lon2).flatten())
+        d = np.zeros((lat1.size, lat2.size))
+        for i in range(lat1.size):
+            dlat = lat2 - lat1[i]
+            dlon = lon2 - lon1[i]
+            d[i, :] = np.sin(dlat / 2) ** 2 + np.cos(lat1[i]) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+        return 2 * 6371.0 * np.arcsin(np.sqrt(d))
+
+    @staticmethod
+    def _reference_competing_destinations(pops, distances, k, a, b, c, delta):
+        """Loop-based reference for competing_destinations; mirrors the prior implementation exactly."""
+        pops = pops.astype(np.float64)
+        n = len(pops)
+        net = gravity(pops, distances, k=k, a=a, b=b, c=c)
+
+        distances1 = distances.copy().astype(np.float64)
+        np.fill_diagonal(distances1, 1)
+        comp = pops**b * distances1 ** (-1 * c)
+        np.fill_diagonal(comp, 0)
+        mysums = np.sum(comp, axis=1)
+
+        for i in range(n):
+            for j in range(n):
+                if j != i:
+                    net[i][j] = net[i][j] * (mysums[j] - comp[j][i]) ** delta
+        np.fill_diagonal(net, 0)
+        return net
+
+    def test_distance_matches_loop_reference(self):
+        """Given lat/lon vectors, when vectorized distance runs, then it matches the looped reference within float tolerance."""
+        actual = distance(self.lat, self.lon)
+        expected = self._reference_distance(self.lat, self.lon, self.lat, self.lon)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-9)
+
+    def test_distance_rectangular_matches_loop_reference(self):
+        """Given different-sized lat/lon vectors, when vectorized distance runs, then NxM output matches the looped reference."""
+        lat2 = self.lat[:4]
+        lon2 = self.lon[:4]
+        actual = distance(self.lat, self.lon, lat2, lon2)
+        expected = self._reference_distance(self.lat, self.lon, lat2, lon2)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-9)
+
+    def test_competing_destinations_matches_loop_reference(self):
+        """Given a multi-node scenario, when vectorized competing_destinations runs, then output equals the looped reference within float tolerance."""
+        k, a, b, c, delta = 0.01, 1.0, 1.0, 2.0, -0.1
+        actual = competing_destinations(self.pops, self.distances, k=k, a=a, b=b, c=c, delta=delta)
+        expected = self._reference_competing_destinations(self.pops, self.distances, k, a, b, c, delta)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
 if __name__ == "__main__":
     unittest.main()

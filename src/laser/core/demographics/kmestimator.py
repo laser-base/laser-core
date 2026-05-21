@@ -212,6 +212,24 @@ def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.ui
 
 @nb.njit(parallel=True, cache=True)
 def _pdod(age_in_days: np.ndarray, year_of_death: np.ndarray, day_of_death: np.ndarray):  # pragma: no cover
+    """Predict the day-of-year of death for each individual (Numba parallel kernel).
+
+    For individuals whose current age (in days) places them before their predicted
+    year of death, a uniformly-random day in `[0, 365)` is chosen. For individuals
+    already in their year of death, the day is uniformly chosen from `[age_doy, 365)`
+    so the predicted day cannot precede the current day.
+
+    Args:
+        age_in_days (np.ndarray): Current ages of individuals in days. Integer or float dtype.
+        year_of_death (np.ndarray of np.uint16): Predicted year of death per individual,
+            as produced by [`_pyod`][laser.core.demographics.kmestimator._pyod].
+        day_of_death (np.ndarray): Output buffer; populated in-place with the predicted
+            day-of-year of death (`0`–`364`). Must match the shape and integer family of
+            `age_in_days`.
+
+    Returns:
+        None: `day_of_death` is filled in-place.
+    """
     n = age_in_days.shape[0]
     for i in nb.prange(n):
         age_days = np.uint32(age_in_days[i])

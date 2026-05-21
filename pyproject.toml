@@ -29,14 +29,16 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-    "click", # ==8.1.7",
-    "numpy",
-    "numba",
-    "matplotlib",
-    "pandas",
-    "h5py",
-    "geopandas",
-    "shapely",
+    # Lower bounds reflect the minimum versions currently exercised by CI / uv.lock.
+    # Intentionally no upper bounds to avoid resolver pain unless a known incompatibility forces one.
+    "click>=8.1",
+    "numpy>=2.0",
+    "numba>=0.60",
+    "matplotlib>=3.9",
+    "pandas>=2.3",
+    "h5py>=3.14",
+    "geopandas>=1.0",
+    "shapely>=2.0",
     "uv>=0.10.5",
 ]
 

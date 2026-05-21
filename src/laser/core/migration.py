@@ -29,6 +29,12 @@ from numbers import Number
 
 import numpy as np
 
+from ._validation import _has_dimensions
+from ._validation import _has_shape
+from ._validation import _has_values
+from ._validation import _is_dtype
+from ._validation import _is_instance
+
 
 def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: float, c: float, **kwargs):
     r"""
@@ -192,20 +198,44 @@ def competing_destinations(pops, distances, k, a, b, c, delta, **params):
     # Don't subtract off the diagonal - this could be a NaN if distance to self is zero
     np.fill_diagonal(competition_matrix, 0)
     mysums = np.sum(competition_matrix, axis=1)
-    # Rather than computing that interior sum for each element, just compute the row sums,
-    # and then subtract the k=i term.
-    for i in range(len(pops)):
-        for j in range(len(pops)):
-            if j != i:
-                network[i][j] = network[i][j] * (mysums[j] - competition_matrix[j][i]) ** delta
+    # For every (i, j), the bracketed sum is mysums[j] - competition_matrix[j, i], i.e. the
+    # row sum of j with the k=i term removed (k=j is already zero on the diagonal).
+    # Broadcasting mysums (1, N) against competition_matrix.T builds the full adjustment matrix
+    # in one shot, replacing the prior O(N^2) double Python loop.
+    adjustment = (mysums[np.newaxis, :] - competition_matrix.T) ** delta
+    network *= adjustment
 
     np.fill_diagonal(network, 0)
     return network
 
 
 def sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
-    # Separating this operation out because it is common between a couple of migration models, and there is a little trickiness in appropriately
-    # handling cases where there are multiple destinations equidistant from the source node.
+    r"""Cumulative sum of populations of all destinations at or closer than each candidate.
+
+    Both `stouffer` and `radiation` need, for each destination `j`, the sum of populations at
+    destinations `k` where `distance(i, k) <= distance(i, j)`. With unique distances this is a
+    plain `cumsum` over the distance-sorted populations. When multiple destinations are
+    equidistant from the source, every member of the tied group must share the same partial
+    sum (the largest one in the tie), or the resulting model probabilities will violate the
+    "as close or closer" requirement.
+
+    Args:
+        sorted_pops (np.ndarray): 1D non-negative numeric array of populations, sorted by
+            distance from the source node (i.e. `pops[sort_indices[i]]`).
+        sorted_distance_row (np.ndarray): 1D non-negative numeric array of distances from
+            the source node, sorted in ascending order (i.e. `distances[i][sort_indices[i]]`).
+            Must have the same shape as `sorted_pops`.
+
+    Returns:
+        np.ndarray: 1D array where entry `j` is the population sum over all `k` with
+            `sorted_distance_row[k] <= sorted_distance_row[j]`. Ties in distance produce
+            identical sums across the tied positions.
+
+    Raises:
+        TypeError: If inputs are not NumPy arrays, are not numeric, or have mismatched shapes.
+        ValueError: If inputs contain negative values, or `sorted_distance_row` is not sorted
+            in ascending order.
+    """
     _is_instance(sorted_pops, np.ndarray, f"sorted_pops must be a NumPy array ({type(sorted_pops)=})")
     _is_dtype(sorted_pops, np.number, f"sorted_pops must be a numeric array ({sorted_pops.dtype=})")
     _has_values(sorted_pops >= 0, "sorted_pops must contain only non-negative values")
@@ -421,14 +451,16 @@ def distance(lat1, lon1, lat2=None, lon2=None):
     lon1 = np.radians(lon1)
     lat2 = np.radians(lat2)
     lon2 = np.radians(lon2)
-    d = np.zeros((lat1.size, lat2.size))
-    for index in range(lat1.size):
-        # haversine formula (https://en.wikipedia.org/wiki/Haversine_formula)
-        dlat = lat2 - lat1[index]
-        dlon = lon2 - lon1[index]
-        a = np.sin(dlat / 2) ** 2 + np.cos(lat1[index]) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-        d[index, :] = a
-    d = 2 * np.arcsin(np.sqrt(d))
+
+    # Haversine formula (https://en.wikipedia.org/wiki/Haversine_formula).
+    # Broadcasting lat1/lon1 as columns against lat2/lon2 as rows builds the (N, M) matrix in
+    # a single vectorized pass — replacing the prior per-row Python loop.
+    lat1_col = lat1[:, np.newaxis]
+    lon1_col = lon1[:, np.newaxis]
+    dlat = lat2[np.newaxis, :] - lat1_col
+    dlon = lon2[np.newaxis, :] - lon1_col
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1_col) * np.cos(lat2)[np.newaxis, :] * np.sin(dlon / 2) ** 2
+    d = 2 * np.arcsin(np.sqrt(a))
     RE = 6371.0  # Earth radius in km
     d *= RE
 
@@ -487,38 +519,3 @@ def _sanity_checks(pops, distances, **params):
     if "include_home" in params:
         include_home = params.get("include_home", None)
         _is_instance(include_home, (int, bool), f"include_home must be boolean or integer type ({type(include_home)=})")
-
-
-def _is_instance(obj, types, message):
-    if not isinstance(obj, types):
-        raise TypeError(message)
-
-    return
-
-
-def _has_dimensions(obj, dimensions, message):
-    if not len(obj.shape) == dimensions:
-        raise TypeError(message)
-
-    return
-
-
-def _is_dtype(obj, dtype, message):
-    if not np.issubdtype(obj.dtype, dtype):
-        raise TypeError(message)
-
-    return
-
-
-def _has_values(check, message):
-    if not np.all(check):
-        raise ValueError(message)
-
-    return
-
-
-def _has_shape(obj, shape, message):
-    if not obj.shape == shape:
-        raise TypeError(message)
-
-    return

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python3 -m pytest tests/ -q --no-header)",
+      "Bash(uv pip *)"
+    ]
+  }
+}

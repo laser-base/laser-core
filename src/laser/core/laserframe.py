@@ -34,6 +34,9 @@ from operator import mul
 import h5py
 import numpy as np
 
+from laser.core._validation import _has_shape
+from laser.core._validation import _is_dtype
+from laser.core._validation import _is_instance
 from laser.core.utils import calc_capacity
 
 
@@ -691,41 +694,3 @@ class LaserFrame:
         description = "\n".join(description)
 
         return description
-
-
-# Sanity checks
-
-
-def _is_instance(obj, types, message):
-    if not isinstance(obj, types):
-        raise TypeError(message)
-
-    return
-
-
-# def _has_dimensions(obj, dimensions, message):
-#     if not len(obj.shape) == dimensions:
-#         raise TypeError(message)
-
-#     return
-
-
-def _is_dtype(obj, dtype, message):
-    if not np.issubdtype(obj.dtype, dtype):
-        raise TypeError(message)
-
-    return
-
-
-# def _has_values(check, message):
-#     if not np.all(check):
-#         raise ValueError(message)
-
-#     return
-
-
-def _has_shape(obj, shape, message):
-    if not obj.shape == shape:
-        raise TypeError(message)
-
-    return

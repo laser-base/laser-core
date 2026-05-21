@@ -28,17 +28,23 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     Returns:
 
         np.ndarray: 1D array of length nnodes representing the estimated required capacity (number of agents) at each node.
+
+    Raises:
+        ValueError: If `initial_pop` length does not match the number of nodes in `birthrates`,
+            if any birthrate is negative or exceeds 100, or if `safety_factor` is outside `[0, 6]`.
     """
-    # Validate birthrates shape against initial_pop shape
+    # Validate at API boundary with exceptions (not `assert`), so checks survive `python -O`.
     _, nnodes = birthrates.shape
-    assert len(initial_pop) == nnodes, f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match"
+    if len(initial_pop) != nnodes:
+        raise ValueError(f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match")
 
-    # Validate birthrates values, must be >= 0 and <= 100
-    assert np.all(birthrates >= 0.0), "All birthrate values must be non-negative"
-    assert np.all(birthrates <= 100.0), "All birthrate values must be less than or equal to 100"
+    if not np.all(birthrates >= 0.0):
+        raise ValueError("All birthrate values must be non-negative")
+    if not np.all(birthrates <= 100.0):
+        raise ValueError("All birthrate values must be less than or equal to 100")
 
-    # Validate safety_factor
-    assert 0 <= safety_factor <= 6, f"safety_factor must be between 0 and 6, got {safety_factor}"
+    if not (0 <= safety_factor <= 6):
+        raise ValueError(f"safety_factor must be between 0 and 6, got {safety_factor}")
 
     # Convert CBR to daily growth rate
     # CBR = births per 1,000 individuals per year
