@@ -188,7 +188,8 @@ def initialize_population(grid, initial: list | np.ndarray, states=None):
         for index, state in enumerate(states):
             grid[state] = initial[:, index]
             total += initial[:, index]
-        assert np.all(total == grid.population), "Sum of initial states does not equal population at some nodes"
+        if not np.all(total == grid.population):
+            raise ValueError("Sum of initial states does not equal population at some nodes")
 
     elif np.all((initial >= 0.0) & (initial <= 1.0)):
         # If any rows sum to > 1.0, raise error

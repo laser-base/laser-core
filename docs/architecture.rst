@@ -222,6 +222,108 @@ Here’s how you should break down your modeling problem to model a disease with
 3. Figure out the updates you'll need to do each timestep, as declarations.
 4. Add component code for each of those updates.
 
+.. _extension-points:
+
+Extension Points
+================
+
+LASER is intentionally a small set of composable primitives rather than a rigid
+framework — most extension lives in *your* model script, not in a subclass tree
+inside ``laser.core``. That said, three patterns recur often enough to call out:
+
+Subclassing ``LaserFrame``
+--------------------------
+
+Subclass when you want a model-flavored frame that pre-registers its properties
+and exposes domain methods. Avoid subclassing just to add helper methods that
+could live on the model class itself.
+
+.. code-block:: python
+
+    import numpy as np
+    from laser.core import LaserFrame
+
+    class SIRFrame(LaserFrame):
+        """A LaserFrame pre-populated with the properties an SIR model needs."""
+
+        def __init__(self, capacity, initial_count=-1):
+            super().__init__(capacity=capacity, initial_count=initial_count)
+            self.add_scalar_property("state", dtype=np.uint8, default=0)  # 0=S, 1=I, 2=R
+            self.add_scalar_property("infection_timer", dtype=np.int16, default=0)
+            self.add_scalar_property("date_of_birth", dtype=np.int32, default=0)
+
+        def infected_count(self) -> int:
+            """Number of currently-infected agents in the active slice."""
+            return int(np.count_nonzero(self.state == 1))
+
+    frame = SIRFrame(capacity=1_000_000, initial_count=100_000)
+    start, end = frame.add(0)  # already initialized; no new activation needed
+    frame.state[:100] = 1      # seed 100 infections
+
+Extending ``PropertySet``
+-------------------------
+
+``PropertySet`` is a flat parameter bag. The recommended pattern is to keep
+parameters in a vanilla ``PropertySet`` and compose them with ``+=``, ``<<=``,
+or ``|=`` rather than to subclass. If you do subclass — for instance to attach
+validation or a ``to_yaml`` method — keep the public attributes flat so the
+existing operators continue to work:
+
+.. code-block:: python
+
+    from laser.core import PropertySet
+
+    class ValidatedSIRParams(PropertySet):
+        """SIR parameters with a single ``validate`` hook called by your model setup."""
+
+        def validate(self):
+            if not (0.0 <= self.beta <= 10.0):
+                raise ValueError(f"beta must be in [0, 10] (got {self.beta!r})")
+            if not (0.0 <= self.gamma <= 1.0):
+                raise ValueError(f"gamma must be in [0, 1] (got {self.gamma!r})")
+
+    pars = ValidatedSIRParams({"beta": 0.4, "gamma": 0.1})
+    pars |= {"seed": 20260514}   # composition still works
+    pars.validate()
+
+Adding a custom migration model
+-------------------------------
+
+The migration models in :mod:`laser.core.migration` are plain functions that
+take ``(pops, distances, ...)`` and return a 2-D network. There is no plugin
+registry — to add a model, just write a function with the same signature, and
+optionally re-use the shared validation helpers in
+:mod:`laser.core._validation` (package-private but stable for the package's
+own code) or the public sanity-check pattern in :func:`laser.core.migration.gravity`.
+
+.. code-block:: python
+
+    import numpy as np
+    from laser.core import migration
+
+    def exponential_decay(pops, distances, k, scale, **_):
+        """A custom migration model: flows decay exponentially with distance.
+
+        network[i, j] = k * pops[j] * exp(-distance[i, j] / scale), with zero diagonal.
+        """
+        # Use the same boundary-validation pattern as the built-in models.
+        if not isinstance(distances, np.ndarray) or distances.ndim != 2:
+            raise TypeError("distances must be a 2D NumPy array")
+
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = k * pops[np.newaxis, :] * np.exp(-distances / scale)
+        np.fill_diagonal(network, 0)
+        return network
+
+    # Plug it in just like one of the built-ins:
+    net = exponential_decay(pops, distances, k=0.01, scale=100.0)
+    net = migration.row_normalizer(net, max_rowsum=0.05)
+
+When in doubt, prefer **composition** (a regular function or model class that
+*uses* ``LaserFrame``, ``PropertySet``, and the migration helpers) over
+inheritance.
+
 Glossary of Terms
 =================
 - **Patch**

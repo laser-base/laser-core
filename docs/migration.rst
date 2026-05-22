@@ -130,3 +130,60 @@ With :math:`\Omega` defined as above in the Stouffer model,
 :math:`M_{i,j} = k \frac{p_i p_j}{\left(p_i + \sum_{k \in \Omega(i,j)} p_k\right)\left(p_i + p_j + \sum_{k \in \Omega(i,j)} p_k\right)}`
 
 We again use the parameter "include_home" to determine whether or not location :math:`i` is to be included in :math:`\Omega(i,j)`.
+
+Performance characteristics
+===========================
+
+All four migration models in :mod:`laser.core.migration` produce an :math:`N \times N`
+network matrix from an :math:`N`-vector of populations and an :math:`N \times N`
+distance matrix. Costs below are for a single call (network construction); they do
+**not** include downstream sampling cost. Asymptotic complexity is the same for all
+models — :math:`O(N^2)` — but the per-element constants differ.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 14 14 50
+
+   * - Model
+     - Asymptotic cost
+     - Inner loop
+     - Notes
+   * - :func:`laser.core.migration.gravity`
+     - :math:`O(N^2)`
+     - Fully vectorized NumPy
+     - The cheapest model; one elementwise product and a fill of the diagonal.
+   * - :func:`laser.core.migration.competing_destinations`
+     - :math:`O(N^2)`
+     - Fully vectorized NumPy
+     - Vectorized in v1.0.2+ (previously an :math:`O(N^2)` Python double loop). One additional :math:`N \times N` adjustment matrix is built on top of the gravity output.
+   * - :func:`laser.core.migration.stouffer`
+     - :math:`O(N^2 \log N)`
+     - Fully vectorized NumPy
+     - Vectorized in v1.0.2+ (previously a per-source-node Python loop). Per-row sort dominates at large :math:`N`; equidistant ties handled correctly via grouped maxima.
+   * - :func:`laser.core.migration.radiation`
+     - :math:`O(N^2 \log N)`
+     - Fully vectorized NumPy
+     - Vectorized in v1.0.2+. Same per-row-sort cost as Stouffer; one additional element-wise division pair.
+   * - :func:`laser.core.migration.distance`
+     - :math:`O(N M)`
+     - Fully vectorized broadcasting
+     - Vectorized Haversine; takes two coordinate vectors of length :math:`N` and :math:`M` and returns the :math:`N \times M` great-circle distance matrix.
+
+For up-to-date wall-clock numbers on representative inputs, run the benchmark suite
+shipped under ``benchmarks/`` (see ``benchmarks/README.md`` for invocation and
+``.github/workflows/benchmarks.yml`` for CI):
+
+.. code-block:: bash
+
+   pytest benchmarks/ --benchmark-only
+
+The benchmark suite covers all four migration models and ``distance`` at multiple
+scales (typically :math:`N = 100` and :math:`N = 1{,}000`) so that performance
+regressions in any one of them are caught before merging.
+
+.. note::
+   Numerical behavior is pinned by the bit-equivalence regression tests in
+   ``tests/test_migration.py`` (``TestMigrationVectorizationRegression``): every
+   vectorized model is compared against a loop-based reference within float
+   tolerance (``rtol`` :math:`\le 10^{-10}`). When extending these models, mirror
+   the same test pattern.

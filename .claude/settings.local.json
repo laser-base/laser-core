@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(.venv/bin/python3 -m pytest tests/ -q --no-header)",
-      "Bash(uv pip *)"
+      "Bash(uv pip *)",
+      "Bash(.venv/bin/python3 -m pytest tests/test_migration.py -q --no-header)",
+      "Bash(grep -n \"^=\\\\+$\\\\|^-\\\\+$\\\\|Glossary\" /Users/christopherlorton/projects/laser-fresh/laser.core/docs/architecture.rst)",
+      "Bash(grep -n \"^=\\\\+$\\\\|^-\\\\+$\\\\|^[A-Z][a-z]\" /Users/christopherlorton/projects/laser-fresh/laser.core/docs/migration.rst)"
     ]
   }
 }

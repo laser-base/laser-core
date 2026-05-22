@@ -209,6 +209,38 @@ def competing_destinations(pops, distances, k, a, b, c, delta, **params):
     return network
 
 
+def _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d):
+    """Batched 2D analogue of [`sum_populations_as_close_or_closer`][laser.core.migration.sum_populations_as_close_or_closer].
+
+    For each row, returns `cumsum(sorted_pops_2d)` with any group of equidistant
+    destinations sharing the cumulative sum at the rightmost (largest) index of the group.
+    This is the matrix used by the vectorized `stouffer` and `radiation` implementations.
+
+    The single Python loop runs over columns (`O(N)` iterations) rather than over rows
+    (`O(N)` rows × per-row `O(N)` helper = `O(N^2)` Python iterations in the prior code),
+    with each iteration doing only vectorized work across all rows.
+
+    Args:
+        sorted_pops_2d (np.ndarray): 2D array of shape `(N, N)`; row `i` is `pops[sort_indices[i]]`.
+        sorted_distances_2d (np.ndarray): 2D array of shape `(N, N)`; row `i` is
+            `distances[i][sort_indices[i]]`, ascending.
+
+    Returns:
+        np.ndarray: 2D array of shape `(N, N)` with the corrected cumulative sums.
+    """
+    cumulative = np.cumsum(sorted_pops_2d, axis=1).astype(np.float64, copy=False)
+    n_cols = sorted_distances_2d.shape[1]
+    if n_cols <= 1:
+        return cumulative
+    # group_end[i, k] = rightmost column index in k's tied-distance group on row i.
+    group_end = np.broadcast_to(np.arange(n_cols), sorted_distances_2d.shape).copy()
+    # Right-to-left propagation: tied positions inherit the group end of the next column.
+    for k in range(n_cols - 2, -1, -1):
+        tied_mask = sorted_distances_2d[:, k] == sorted_distances_2d[:, k + 1]
+        group_end[tied_mask, k] = group_end[tied_mask, k + 1]
+    return np.take_along_axis(cumulative, group_end, axis=1)
+
+
 def sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
     r"""Cumulative sum of populations of all destinations at or closer than each candidate.
 
@@ -314,20 +346,21 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
 
     # We will just use the "truthiness" of include_home (could be boolean, could be 0/1)
 
-    network = np.zeros_like(distances)
     sort_indices = np.argsort(distances, axis=1, kind="stable")
     unsort_indices = np.argsort(sort_indices, axis=1)
 
-    for i in range(len(pops)):
-        sorted_pops = pops[sort_indices[i]]
-        cumulative_sorted_pops = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+    sorted_pops_2d = pops[sort_indices]
+    sorted_distances_2d = np.take_along_axis(distances, sort_indices, axis=1)
+    cumulative_2d = _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d)
 
-        if not include_home:
-            cumulative_sorted_pops = cumulative_sorted_pops - sorted_pops[0]
+    if not include_home:
+        cumulative_2d = cumulative_2d - sorted_pops_2d[:, 0:1]
 
-        network[i, 1:] = k * pops[i] ** a * (sorted_pops[1:] / cumulative_sorted_pops[1:]) ** b
-    network = np.take_along_axis(network, unsort_indices, axis=1)
+    network_sorted = np.zeros_like(distances)
+    # Column 0 is the source itself (distance 0 sorts first); it stays at 0 and is zeroed at the end via fill_diagonal.
+    network_sorted[:, 1:] = k * (pops[:, np.newaxis] ** a) * (sorted_pops_2d[:, 1:] / cumulative_2d[:, 1:]) ** b
 
+    network = np.take_along_axis(network_sorted, unsort_indices, axis=1)
     np.fill_diagonal(network, 0)
     return network
 
@@ -380,20 +413,20 @@ def radiation(pops, distances, k, include_home, **params):
 
     # We will just use the "truthiness" of include_home (could be boolean, could be 0/1)
 
-    network = np.zeros_like(distances)
     sort_indices = np.argsort(distances, axis=1, kind="stable")
     unsort_indices = np.argsort(sort_indices, axis=1)
 
-    for i in range(len(pops)):
-        sorted_pops = pops[sort_indices[i]]
-        cumulative_sorted_pops = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+    sorted_pops_2d = pops[sort_indices]
+    sorted_distances_2d = np.take_along_axis(distances, sort_indices, axis=1)
+    cumulative_2d = _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d)
 
-        if not include_home:
-            cumulative_sorted_pops = cumulative_sorted_pops - sorted_pops[0]
+    if not include_home:
+        cumulative_2d = cumulative_2d - sorted_pops_2d[:, 0:1]
 
-        network[i] = k * pops[i] * sorted_pops / (pops[i] + cumulative_sorted_pops) / (pops[i] + sorted_pops + cumulative_sorted_pops)
+    pops_col = pops[:, np.newaxis]
+    network_sorted = k * pops_col * sorted_pops_2d / (pops_col + cumulative_2d) / (pops_col + sorted_pops_2d + cumulative_2d)
 
-    network = np.take_along_axis(network, unsort_indices, axis=1)
+    network = np.take_along_axis(network_sorted, unsort_indices, axis=1)
     np.fill_diagonal(network, 0)
     return network
 

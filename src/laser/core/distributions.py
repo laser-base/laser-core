@@ -64,6 +64,15 @@ def beta(a, b):
     $f(x; a, b) = \frac {x^{a-1} (1-x)^{b-1}} {B(a, b)}$
 
     where $B(a, b)$ is the beta function.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.beta(2.0, 5.0)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -82,6 +91,15 @@ def binomial(n, p):
     $f(k,n,p) = Pr(X = k) = \binom {n} {k} p^k (1-p)^{n-k}$
 
     where $n$ is the number of trials and $p$ is the probability of success [0, 1].
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.binomial(10, 0.3)
+        out = np.empty(1_000, dtype=np.int32)
+        dist.sample_ints(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -96,6 +114,15 @@ def constant_float(value):
     """
     Constant distribution.
     Always returns the same floating point value.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.constant_float(0.42)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -110,6 +137,15 @@ def constant_int(value):
     """
     Constant distribution.
     Always returns the same integer value.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.constant_int(7)
+        out = np.empty(1_000, dtype=np.int32)
+        dist.sample_ints(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -128,6 +164,15 @@ def exponential(scale):
     $f(x; \frac {1} {\beta}) = \frac {1} {\beta} e^{-\frac {x} {\beta}}$
 
     where $\beta$ is the scale parameter ($\beta = 1 / \lambda$).
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.exponential(scale=3.5)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -146,6 +191,15 @@ def gamma(shape, scale):
     $p(x) = x^{k-1} \frac {e^{- x / \theta}}{\theta^k \Gamma(k)}$
 
     where $k$ is the shape, $\theta$ is the scale, and $\Gamma(k)$ is the gamma function.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.gamma(shape=2.0, scale=1.5)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -164,6 +218,15 @@ def logistic(loc, scale):
     $P(x) = \frac {e^{-(x - \mu) / s}} {s (1 + e^{-(x - \mu) / s})^2}$
 
     where $\mu$ is the location parameter and $s$ is the scale parameter.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.logistic(loc=0.0, scale=1.0)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -182,6 +245,15 @@ def lognormal(mean, sigma):
     $p(x) = \frac {1} {\sigma x \sqrt {2 \pi}} e^{- \frac {(\ln x - \mu)^2} {2 \sigma^2}}$
 
     where $\mu$ is the mean and $\sigma$ is the standard deviation of the underlying normal distribution.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.lognormal(mean=0.0, sigma=0.5)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -215,6 +287,15 @@ def negative_binomial(n, p):
     $\frac {\Gamma (N + n)} {N! \Gamma (n)} = \binom {N + n - 1} {n - 1}$
 
     which is the more common form of this term.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.negative_binomial(n=5, p=0.3)
+        out = np.empty(1_000, dtype=np.int32)
+        dist.sample_ints(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -233,6 +314,15 @@ def normal(loc, scale):
     $p(x) = \frac {1} {\sqrt {2 \pi \sigma^2}} e^{- \frac {(x - \mu)^2} {2 \sigma^2}}$
 
     where $\mu$ is the mean and $\sigma$ is the standard deviation.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.normal(loc=0.0, scale=1.0)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -251,6 +341,15 @@ def poisson(lam):
     $f( k ; \lambda ) = \frac {\lambda^k e^{- \lambda}} {k!}$
 
     where $\lambda$ is the expected number of events in the given interval.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.poisson(lam=3.0)
+        out = np.empty(1_000, dtype=np.int32)
+        dist.sample_ints(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -269,6 +368,15 @@ def uniform(low, high):
     $p(x) = \frac {1} {b - a}$
 
     where $a$ is the lower bound and $b$ is the upper bound, [$a$, $b$).
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.uniform(low=0.0, high=1.0)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)
@@ -287,6 +395,15 @@ def weibull(a, lam):
     $X = \lambda (- \ln ( U ))^{1 / a}$
 
     where $a$ is the shape parameter and $\lambda$ is the scale parameter.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        sampler = dist.weibull(a=1.5, lam=2.0)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
     """
 
     @nb.njit(nogil=True)

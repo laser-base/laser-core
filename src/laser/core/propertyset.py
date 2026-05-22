@@ -194,11 +194,13 @@ class PropertySet:
             self (PropertySet): The updated instance with the new attributes.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys already present in the PropertySet.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if hasattr(self, key):
                 raise ValueError(f"Cannot override existing value for '{key}'.")
@@ -216,7 +218,7 @@ class PropertySet:
             PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with overrides from the second PropertySet.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys not present in the PropertySet.
         """
 
@@ -236,11 +238,13 @@ class PropertySet:
             self (PropertySet): The updated instance with the overrides from other.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys not present in the PropertySet.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if not hasattr(self, key):
                 raise ValueError(f"Cannot override missing key '{key}'.")
@@ -258,7 +262,7 @@ class PropertySet:
             PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with new or overriding values from the second PropertySet.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
         """
 
         result = PropertySet(self)
@@ -277,10 +281,12 @@ class PropertySet:
             self (PropertySet): The updated instance with all the values of self with new or overriding values from other.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             # no check on existence in self, all keys added or updated
             setattr(self, key, value)

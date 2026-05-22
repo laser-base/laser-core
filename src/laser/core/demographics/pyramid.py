@@ -9,7 +9,27 @@ from laser.core.random import prng
 
 
 class AliasedDistribution:
-    """A class to generate samples from a distribution using the Vose alias method."""
+    """Discrete distribution sampler using the Vose alias method.
+
+    Construct from a vector of bin counts (or relative weights); subsequent calls to
+    [`sample`][laser.core.demographics.AliasedDistribution.sample] return bin indices in
+    `O(1)` per draw regardless of the number of bins. Particularly useful for sampling
+    from age pyramids loaded by
+    [`load_pyramid_csv`][laser.core.demographics.load_pyramid_csv].
+
+    Attributes:
+        alias (np.ndarray): Alias index lookup table.
+        probs (np.ndarray): Per-bin acceptance thresholds (scaled by `len(probs)`).
+        total (int): Sum of the original input counts.
+
+    **Example**:
+
+        from laser.core.demographics import AliasedDistribution, load_pyramid_csv
+
+        pyramid = load_pyramid_csv("examples/Nigeria-2024.csv")
+        male_dist = AliasedDistribution(pyramid[:, 2])
+        bins = male_dist.sample(count=10_000)
+    """
 
     def __init__(self, counts):
         """Build the alias and probability tables for the Vose alias method.

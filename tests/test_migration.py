@@ -13,6 +13,7 @@ from laser.core.migration import gravity
 from laser.core.migration import radiation
 from laser.core.migration import row_normalizer
 from laser.core.migration import stouffer
+from laser.core.migration import sum_populations_as_close_or_closer
 
 City = namedtuple("City", ["name", "pop", "lat", "long"])
 
@@ -928,6 +929,86 @@ class TestMigrationVectorizationRegression(unittest.TestCase):
         actual = competing_destinations(self.pops, self.distances, k=k, a=a, b=b, c=c, delta=delta)
         expected = self._reference_competing_destinations(self.pops, self.distances, k, a, b, c, delta)
         np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+    @staticmethod
+    def _reference_stouffer(pops, distances, k, a, b, include_home):
+        """Loop-based reference for stouffer; mirrors the pre-vectorization implementation exactly."""
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = np.zeros_like(distances)
+        sort_indices = np.argsort(distances, axis=1, kind="stable")
+        unsort_indices = np.argsort(sort_indices, axis=1)
+        for i in range(len(pops)):
+            sorted_pops = pops[sort_indices[i]]
+            cumulative = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            if not include_home:
+                cumulative = cumulative - sorted_pops[0]
+            network[i, 1:] = k * pops[i] ** a * (sorted_pops[1:] / cumulative[1:]) ** b
+        network = np.take_along_axis(network, unsort_indices, axis=1)
+        np.fill_diagonal(network, 0)
+        return network
+
+    @staticmethod
+    def _reference_radiation(pops, distances, k, include_home):
+        """Loop-based reference for radiation; mirrors the pre-vectorization implementation exactly."""
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = np.zeros_like(distances)
+        sort_indices = np.argsort(distances, axis=1, kind="stable")
+        unsort_indices = np.argsort(sort_indices, axis=1)
+        for i in range(len(pops)):
+            sorted_pops = pops[sort_indices[i]]
+            cumulative = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            if not include_home:
+                cumulative = cumulative - sorted_pops[0]
+            network[i] = k * pops[i] * sorted_pops / (pops[i] + cumulative) / (pops[i] + sorted_pops + cumulative)
+        network = np.take_along_axis(network, unsort_indices, axis=1)
+        np.fill_diagonal(network, 0)
+        return network
+
+    def test_stouffer_matches_loop_reference_include_home_false(self):
+        """Given a multi-node scenario, when vectorized stouffer(include_home=False) runs, then output equals the looped reference."""
+        k, a, b = 0.01, 1.0, 1.0
+        actual = stouffer(self.pops, self.distances, k=k, a=a, b=b, include_home=False)
+        expected = self._reference_stouffer(self.pops, self.distances, k, a, b, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_stouffer_matches_loop_reference_include_home_true(self):
+        """Given a multi-node scenario, when vectorized stouffer(include_home=True) runs, then output equals the looped reference."""
+        k, a, b = 0.01, 1.0, 1.0
+        actual = stouffer(self.pops, self.distances, k=k, a=a, b=b, include_home=True)
+        expected = self._reference_stouffer(self.pops, self.distances, k, a, b, include_home=True)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_radiation_matches_loop_reference_include_home_false(self):
+        """Given a multi-node scenario, when vectorized radiation(include_home=False) runs, then output equals the looped reference."""
+        actual = radiation(self.pops, self.distances, k=0.01, include_home=False)
+        expected = self._reference_radiation(self.pops, self.distances, k=0.01, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_radiation_matches_loop_reference_include_home_true(self):
+        """Given a multi-node scenario, when vectorized radiation(include_home=True) runs, then output equals the looped reference."""
+        actual = radiation(self.pops, self.distances, k=0.01, include_home=True)
+        expected = self._reference_radiation(self.pops, self.distances, k=0.01, include_home=True)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_stouffer_handles_equidistant_destinations(self):
+        """Given equidistant destinations, when vectorized stouffer runs, then ties are handled identically to the loop reference."""
+        pops = np.array([100, 200, 300, 400], dtype=np.float64)
+        # Construct a symmetric distance matrix with multiple equidistant pairs from each source.
+        distances = np.array(
+            [
+                [0.0, 1.0, 1.0, 2.0],
+                [1.0, 0.0, 2.0, 1.0],
+                [1.0, 2.0, 0.0, 1.0],
+                [2.0, 1.0, 1.0, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        for include_home in (False, True):
+            actual = stouffer(pops, distances, k=0.01, a=1.0, b=1.0, include_home=include_home)
+            expected = self._reference_stouffer(pops, distances, 0.01, 1.0, 1.0, include_home=include_home)
+            np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
 
 
 if __name__ == "__main__":

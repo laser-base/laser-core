@@ -307,8 +307,19 @@ class LaserFrame:
                 self._save_dict(data, f.create_group("pars"))
 
     def _save(self, parent_group, name):
-        """
-        Internal method to save this LaserFrame under the given group name.
+        """Serialize this LaserFrame into a new HDF5 subgroup of `parent_group`.
+
+        Stores `count` and `capacity` as group attributes and persists each scalar
+        property as a dataset truncated to the active count. Vector / array properties
+        are intentionally skipped to keep the snapshot format compatible with
+        [`load_snapshot`][laser.core.LaserFrame.load_snapshot].
+
+        Args:
+            parent_group (h5py.Group): Parent HDF5 group in which to create the new subgroup.
+            name (str): Name of the subgroup to create (typically `"people"`).
+
+        Returns:
+            None: The subgroup is written in place on `parent_group`.
         """
         group = parent_group.create_group(name)
         group.attrs["count"] = self._count
@@ -322,8 +333,18 @@ class LaserFrame:
         return
 
     def _save_dict(self, data, group):
-        """
-        Internal method to save a dict as datasets and attributes in a group.
+        """Write a parameter dictionary into an HDF5 group as datasets and string attributes.
+
+        Each key/value pair is stored as a dataset when h5py can serialize the value
+        natively; otherwise the value is `str(...)`-cast and stored as a group attribute.
+
+        Args:
+            data (dict): Mapping of parameter names to values. Values may be NumPy arrays,
+                Python scalars, or anything else that round-trips through `str(...)`.
+            group (h5py.Group): Destination HDF5 group (typically `f.create_group("pars")`).
+
+        Returns:
+            None: Datasets and attributes are written in place on `group`.
         """
         for key, value in data.items():
             try:

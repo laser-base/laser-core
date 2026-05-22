@@ -4,6 +4,33 @@ Changelog
 Unreleased
 ----------
 
+* Vectorize ``stouffer`` and ``radiation``: replace the per-source-node Python
+  loop with a batched 2D ``_cumulative_at_or_closer_2d`` helper that does the
+  per-row sort, cumulative-sum, and equidistant-tie repair across all rows in
+  a single vectorized pass. Add five bit-equivalence regression tests (with and
+  without ``include_home``, plus an explicit equidistant-destinations case) in
+  ``tests/test_migration.py``.
+* Sweep ``assert`` statements at API boundaries to raise ``ValueError`` /
+  ``TypeError`` instead, so input validation survives ``python -O``. Affected:
+  ``PropertySet.__iadd__`` / ``__ilshift__`` / ``__ior__`` in
+  ``src/laser/core/propertyset.py`` and ``initialize_population`` in
+  ``src/laser/core/utils.py``. The existing ``AssertionError`` test in
+  ``test_utils.py`` was updated to ``ValueError`` to match.
+* Add runnable ``**Example**`` blocks to every public distribution function in
+  ``src/laser/core/distributions.py`` (beta, binomial, constant_float,
+  constant_int, exponential, gamma, logistic, lognormal, negative_binomial,
+  normal, poisson, uniform, weibull).
+* Add a class-level docstring to ``AliasedDistribution`` and proper
+  parameter-level docstrings to ``LaserFrame._save`` and ``LaserFrame._save_dict``.
+* Add a ``Performance characteristics`` section to ``docs/migration.rst``
+  summarizing the asymptotic cost and vectorization status of each migration
+  model, and a ``Extension Points`` section to ``docs/architecture.rst`` with
+  worked examples for subclassing ``LaserFrame``, extending ``PropertySet``,
+  and writing a custom migration model.
+* Add an advisory ``benchmarks.yml`` GitHub Actions workflow that runs the
+  ``pytest-benchmark`` suite on pull requests touching ``src/laser/core/`` or
+  ``benchmarks/`` and uploads the JSON results as a 90-day artifact. The
+  workflow is intentionally ``continue-on-error`` until a baseline is committed.
 * Vectorize ``competing_destinations`` (removed O(N^2) Python double loop) and
   ``distance`` (removed per-row Python loop); add bit-equivalence regression
   tests pinning the new implementations to the prior looped behavior.
