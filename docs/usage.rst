@@ -92,8 +92,15 @@ the supported spatial-interaction models::
     lon = np.array([0.0, 1.0, 2.0])
     distances = migration.distance(lat, lon)
 
-    network = migration.gravity(pops, distances, k=0.01, a=1.0, b=1.0, c=2.0)
-    network = migration.row_normalizer(network, max_rowsum=0.05)
+    # Run a model and row-normalize in one call:
+    network = migration.build_network(
+        migration.gravity, pops, distances,
+        max_rowsum=0.05, k=0.01, a=1.0, b=1.0, c=2.0,
+    )
+
+    # Equivalent two-step form:
+    # network = migration.gravity(pops, distances, k=0.01, a=1.0, b=1.0, c=2.0)
+    # network = migration.row_normalizer(network, max_rowsum=0.05)
 
 Next steps
 ==========

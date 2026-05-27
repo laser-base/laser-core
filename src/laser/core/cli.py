@@ -21,4 +21,10 @@ import click
 @click.command()
 @click.argument("names", nargs=-1)
 def main(names):
+    """Echo the positional ``NAMES`` arguments back as a Python repr.
+
+    Minimal demonstration entry point for the ``laser-core`` package's Click CLI;
+    real applications should construct their own entry script rather than extending
+    this one.
+    """
     click.echo(repr(names))

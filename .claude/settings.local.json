@@ -5,7 +5,12 @@
       "Bash(uv pip *)",
       "Bash(.venv/bin/python3 -m pytest tests/test_migration.py -q --no-header)",
       "Bash(grep -n \"^=\\\\+$\\\\|^-\\\\+$\\\\|Glossary\" /Users/christopherlorton/projects/laser-fresh/laser.core/docs/architecture.rst)",
-      "Bash(grep -n \"^=\\\\+$\\\\|^-\\\\+$\\\\|^[A-Z][a-z]\" /Users/christopherlorton/projects/laser-fresh/laser.core/docs/migration.rst)"
+      "Bash(grep -n \"^=\\\\+$\\\\|^-\\\\+$\\\\|^[A-Z][a-z]\" /Users/christopherlorton/projects/laser-fresh/laser.core/docs/migration.rst)",
+      "Bash(make html *)",
+      "Bash(uvx --with tox-uv tox -e docs)",
+      "Bash(.venv/bin/python -m pytest tests/test_spatialpops.py -v)",
+      "Bash(.venv/bin/python3 -m pytest tests/test_distributions.py::TestCompositionHelpers -v --no-header)",
+      "Bash(uvx ruff *)"
     ]
   }
 }

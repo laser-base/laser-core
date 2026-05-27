@@ -316,9 +316,16 @@ own code) or the public sanity-check pattern in :func:`laser.core.migration.grav
         np.fill_diagonal(network, 0)
         return network
 
-    # Plug it in just like one of the built-ins:
+    # Plug it in just like one of the built-ins — either two-step:
     net = exponential_decay(pops, distances, k=0.01, scale=100.0)
     net = migration.row_normalizer(net, max_rowsum=0.05)
+
+    # ...or compose the same two steps in one call via build_network. Because
+    # build_network only requires a (pops, distances, **params) signature, it
+    # works with any user-defined model that follows the built-in convention.
+    net = migration.build_network(
+        exponential_decay, pops, distances, max_rowsum=0.05, k=0.01, scale=100.0,
+    )
 
 When in doubt, prefer **composition** (a regular function or model class that
 *uses* ``LaserFrame``, ``PropertySet``, and the migration helpers) over
@@ -327,4 +334,11 @@ inheritance.
 Glossary of Terms
 =================
 - **Patch**
-  Something...
+  In a spatially structured or metapopulation model, a discrete subregion
+  treated as a single unit for the purposes of parameterization: values such as
+  disease transmission rate (β), seasonality forcing, birth and death rates, and
+  environmental conditions are defined at the patch level and apply uniformly to
+  all agents or individuals within it. Patches are coupled by movement or transmission
+  terms representing migration or travel between subregions. Contrast with *node*
+  (graph-theoretic, scale-neutral) and *population center* (empirically defined
+  geographic unit).

@@ -11,6 +11,7 @@ from time import perf_counter_ns
 
 import numba as nb
 import numpy as np
+import pytest
 from scipy.stats import beta as beta_ref
 from scipy.stats import binom
 from scipy.stats import expon
@@ -170,6 +171,82 @@ class TestDistributions(unittest.TestCase):
             assert (
                 tnumba < tnumpy
             ), f"Numba-compatible distribution ({tnumba / 1_000_000:.2f} ms) slower than NumPy ({tnumpy / 1_000_000:.2f} ms)"
+
+
+class TestCompositionHelpers(unittest.TestCase):
+    """Tests for `mixture2`, `tick_modulated`, and `node_modulated`.
+
+    These verify the composition factories return Numba-compatible samplers that
+    produce the expected statistical behavior. Failure here means the composition
+    pattern documented in the module is broken — either the closure doesn't compile
+    or the resulting distribution doesn't match the analytic combination.
+    """
+
+    def test_mixture2_proportions_match_p_a(self):
+        """Given a 2-component mixture of two constant samplers, when we draw many samples, then the proportion equal to value_a matches p_a within Monte Carlo tolerance."""
+        const_a = dists.constant_float(1.0)
+        const_b = dists.constant_float(2.0)
+        p_a = 0.3
+        sampler = dists.mixture2(const_a, const_b, p_a=p_a)
+        out = dists.sample_floats(sampler, np.empty(NSAMPLES, dtype=np.float32))
+        observed_p_a = float(np.mean(out == np.float32(1.0)))
+        assert abs(observed_p_a - p_a) < 0.01, f"mixture2 proportion {observed_p_a} differs from p_a={p_a} by more than 1%"
+
+    def test_mixture2_recovers_both_branches(self):
+        """Given a mixture with p_a in (0,1), when we draw many samples, then both branches' values appear."""
+        sampler = dists.mixture2(dists.constant_float(1.0), dists.constant_float(2.0), p_a=0.5)
+        out = dists.sample_floats(sampler, np.empty(10_000, dtype=np.float32))
+        unique = np.unique(out)
+        assert set(unique.tolist()) == {1.0, 2.0}, f"mixture2 produced unexpected values: {unique}"
+
+    def test_mixture2_rejects_invalid_p_a(self):
+        """Given an out-of-range p_a, when mixture2 is called, then ValueError is raised."""
+        with pytest.raises(ValueError, match=r"p_a must be in \[0, 1\]"):
+            dists.mixture2(dists.constant_float(0.0), dists.constant_float(1.0), p_a=1.5)
+        with pytest.raises(ValueError, match=r"p_a must be in \[0, 1\]"):
+            dists.mixture2(dists.constant_float(0.0), dists.constant_float(1.0), p_a=-0.1)
+
+    def test_tick_modulated_scales_by_modulator_at_tick(self):
+        """Given a tick-modulated constant sampler, when we draw at a specific tick, then the output equals base_value * modulator[tick % L]."""
+        modulator = np.array([0.5, 1.0, 1.5, 2.0], dtype=np.float32)
+        sampler = dists.tick_modulated(dists.constant_float(10.0), modulator)
+        for tick in range(8):  # cover two full periods
+            out = dists.sample_floats(sampler, np.empty(100, dtype=np.float32), tick=tick)
+            expected = np.float32(10.0 * modulator[tick % 4])
+            assert np.allclose(out, expected), f"tick={tick}: got {out[0]}, expected {expected}"
+
+    def test_tick_modulated_rejects_empty_or_2d_modulator(self):
+        """Given an invalid modulator shape, when tick_modulated is called, then ValueError is raised."""
+        with pytest.raises(ValueError, match=r"modulator must be a non-empty 1D array"):
+            dists.tick_modulated(dists.constant_float(1.0), np.empty(0, dtype=np.float32))
+        with pytest.raises(ValueError, match=r"modulator must be a non-empty 1D array"):
+            dists.tick_modulated(dists.constant_float(1.0), np.ones((3, 3), dtype=np.float32))
+
+    def test_node_modulated_scales_by_modulator_at_node(self):
+        """Given a node-modulated constant sampler, when we draw at a specific node, then output equals base_value * modulator[node]."""
+        modulator = np.array([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float32)
+        sampler = dists.node_modulated(dists.constant_float(100.0), modulator)
+        for node in range(5):
+            out = dists.sample_floats(sampler, np.empty(100, dtype=np.float32), node=node)
+            expected = np.float32(100.0 * modulator[node])
+            assert np.allclose(out, expected), f"node={node}: got {out[0]}, expected {expected}"
+
+    def test_node_modulated_rejects_empty_or_2d_modulator(self):
+        """Given an invalid modulator shape, when node_modulated is called, then ValueError is raised."""
+        with pytest.raises(ValueError, match=r"modulator must be a non-empty 1D array"):
+            dists.node_modulated(dists.constant_float(1.0), np.empty(0, dtype=np.float32))
+        with pytest.raises(ValueError, match=r"modulator must be a non-empty 1D array"):
+            dists.node_modulated(dists.constant_float(1.0), np.ones((3, 3), dtype=np.float32))
+
+    def test_composition_helpers_chain(self):
+        """Given a node-modulated mixture, when we draw at a specific node, then the composition behaves as the product of the two effects."""
+        # 50/50 mixture of 1.0 and 3.0 → average 2.0; node 2 multiplier 0.5 → average 1.0.
+        mix = dists.mixture2(dists.constant_float(1.0), dists.constant_float(3.0), p_a=0.5)
+        node_modulator = np.array([1.0, 1.0, 0.5, 1.0], dtype=np.float32)
+        sampler = dists.node_modulated(mix, node_modulator)
+        out = dists.sample_floats(sampler, np.empty(NSAMPLES, dtype=np.float32), node=2)
+        # Expected values at node 2: 0.5 or 1.5 with equal probability → mean 1.0.
+        assert abs(out.mean() - 1.0) < 0.02, f"chained composition mean {out.mean()} not close to 1.0"
 
 
 if __name__ == "__main__":

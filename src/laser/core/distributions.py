@@ -452,3 +452,134 @@ def sample_ints(fn, dest, tick=0, node=0):
     for i in nb.prange(count):
         dest[i] = fn(tick, node)
     return dest
+
+
+# Composition helpers — productize the patterns shown in the module-level docstring.
+# These all take and return Numba-wrapped samplers with the same `(tick, node) -> scalar`
+# signature, so they compose freely and are valid `fn` arguments to `sample_floats` /
+# `sample_ints`. They are float-only (returning `float32`); int samplers should be
+# composed at the Python level or wrapped in `np.int32(...)` by the caller.
+
+
+def mixture2(sampler_a, sampler_b, p_a):
+    """Two-component mixture sampler.
+
+    With probability ``p_a`` returns a draw from ``sampler_a``; otherwise returns a draw
+    from ``sampler_b``. Both samplers must be Numba-wrapped distribution functions
+    returning ``float32``.
+
+    Args:
+        sampler_a: Numba-wrapped sampler chosen with probability ``p_a``.
+        sampler_b: Numba-wrapped sampler chosen with probability ``1 - p_a``.
+        p_a (float): Mixture weight on ``sampler_a``, in [0, 1].
+
+    Returns:
+        function: A Numba-wrapped sampler with signature ``(tick, node) -> float32``.
+
+    Raises:
+        ValueError: If ``p_a`` is not in [0, 1].
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        short = dist.exponential(scale=3.0)
+        long = dist.exponential(scale=14.0)
+        # 70% of agents recover with the short timescale, 30% with the long timescale.
+        sampler = dist.mixture2(short, long, p_a=0.7)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out)
+    """
+    if not (0.0 <= p_a <= 1.0):
+        raise ValueError(f"p_a must be in [0, 1] (got {p_a!r})")
+    threshold = np.float32(p_a)
+
+    @nb.njit(nogil=True)
+    def _mixture2(_tick: int, _node: int):
+        if np.random.random() < threshold:
+            return np.float32(sampler_a(_tick, _node))
+        return np.float32(sampler_b(_tick, _node))
+
+    return _mixture2
+
+
+def tick_modulated(base_sampler, modulator):
+    """Scale a sampler's output by a tick-periodic multiplier.
+
+    At each call the output of ``base_sampler(tick, node)`` is multiplied by
+    ``modulator[tick % len(modulator)]``. The common case is a seasonal multiplier
+    of length 365 driving annual variation in an underlying distribution.
+
+    Args:
+        base_sampler: Numba-wrapped sampler with signature ``(tick, node) -> scalar``.
+        modulator (array-like of float): 1D array of per-tick multipliers. Cast to
+            ``float32`` internally; length sets the period.
+
+    Returns:
+        function: A Numba-wrapped sampler with signature ``(tick, node) -> float32``.
+
+    Raises:
+        ValueError: If ``modulator`` is not a non-empty 1D array.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        seasonal = 1.0 + 0.3 * np.cos(np.linspace(0, 2 * np.pi, 365))
+        base = dist.normal(loc=10.0, scale=1.0)
+        sampler = dist.tick_modulated(base, seasonal)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out, tick=42)
+    """
+    modulator = np.asarray(modulator, dtype=np.float32)
+    if modulator.ndim != 1 or modulator.size == 0:
+        raise ValueError(f"modulator must be a non-empty 1D array (got shape {modulator.shape})")
+    period = modulator.size
+
+    @nb.njit(nogil=True)
+    def _tick_modulated(_tick: int, _node: int):
+        return np.float32(modulator[_tick % period] * base_sampler(_tick, _node))
+
+    return _tick_modulated
+
+
+def node_modulated(base_sampler, modulator):
+    """Scale a sampler's output by a per-node multiplier.
+
+    At each call the output of ``base_sampler(tick, node)`` is multiplied by
+    ``modulator[node]``. Useful for per-patch transmission ramps or spatial
+    heterogeneity in any distribution parameter.
+
+    Args:
+        base_sampler: Numba-wrapped sampler with signature ``(tick, node) -> scalar``.
+        modulator (array-like of float): 1D array of per-node multipliers. Cast to
+            ``float32`` internally; ``node`` arguments must be valid indices into it.
+
+    Returns:
+        function: A Numba-wrapped sampler with signature ``(tick, node) -> float32``.
+
+    Raises:
+        ValueError: If ``modulator`` is not a non-empty 1D array.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        ramp = np.linspace(0.5, 2.0, 42, dtype=np.float32)
+        base = dist.normal(loc=10.0, scale=1.0)
+        sampler = dist.node_modulated(base, ramp)
+        out = np.empty(1_000, dtype=np.float32)
+        dist.sample_floats(sampler, out, node=7)
+    """
+    modulator = np.asarray(modulator, dtype=np.float32)
+    if modulator.ndim != 1 or modulator.size == 0:
+        raise ValueError(f"modulator must be a non-empty 1D array (got shape {modulator.shape})")
+
+    @nb.njit(nogil=True)
+    def _node_modulated(_tick: int, _node: int):
+        return np.float32(modulator[_node] * base_sampler(_tick, _node))
+
+    return _node_modulated

@@ -20,3 +20,9 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: debug-statements
+  - repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
+    hooks:
+      - id: interrogate
+        args: [--config=pyproject.toml, src/laser/core]
+        pass_filenames: false

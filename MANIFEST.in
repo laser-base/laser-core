@@ -3,6 +3,7 @@ graft docs
 graft src
 graft ci
 graft tests
+graft .claude/skills
 
 include .bumpversion.cfg
 include .cookiecutterrc

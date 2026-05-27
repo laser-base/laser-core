@@ -4,6 +4,70 @@ Changelog
 Unreleased
 ----------
 
+* Add sampler-composition helpers to ``laser.core.distributions``:
+  ``mixture2(sampler_a, sampler_b, p_a)`` for two-component mixtures,
+  ``tick_modulated(base_sampler, modulator)`` for tick-periodic multiplicative
+  modulation (e.g. seasonality), and ``node_modulated(base_sampler, modulator)``
+  for per-node multipliers. All three return Numba-compatible samplers usable
+  inside ``sample_floats``/``sample_ints``. Eight new tests in
+  ``tests/test_distributions.py::TestCompositionHelpers`` cover proportions,
+  branch recovery, modulator-scale correctness, input validation, and the
+  composition-chains case.
+* Add a Claude Code skill manifest at ``.claude/skills/laser-core.md`` that
+  summarizes the public API, dev workflow, and required conventions for AI
+  coding assistants. Add a "Support and contact" section to ``README.rst``
+  surfacing the issue tracker, maintainer emails, ``CONTRIBUTING.rst``, and
+  the AI orientation files.
+* Add the ``interrogate`` docstring-coverage gate to
+  ``.pre-commit-config.yaml`` with configuration in ``[tool.interrogate]`` in
+  ``pyproject.toml``. Floor set to ``fail-under = 95`` (current coverage
+  97.9%). Fill in remaining module / class docstrings on ``extension.py``,
+  ``cli.py:main``, ``demographics/__init__.py``,
+  ``demographics/spatialpops.py``, and ``KaplanMeierEstimator`` so the gate
+  passes on first run. Add ``interrogate`` to the ``dev`` optional-dependency
+  set in ``pyproject.toml``.
+* Add a "Choosing a model" section to ``docs/migration.rst`` summarizing what
+  each migration model encodes, parameter intuitions, and numerical edge
+  cases. Stays descriptive rather than prescriptive but flags the gravity
+  model as the natural starting point (principle of least surprise).
+* Swap the LaTeX formula blocks in the ``stouffer`` and ``radiation``
+  docstrings in ``src/laser/core/migration.py`` — they had been attached to
+  the wrong function. Implementations and ``docs/migration.rst`` were already
+  correct; this only updates the inline docstrings.
+* Rework ``distribute_population_skewed`` in
+  ``src/laser/core/demographics/spatialpops.py`` to guarantee a minimum
+  population for every node and to use the LASER-wide PRNG. Adds a new
+  ``min_pop`` parameter (default 1000) with explicit feasibility validation:
+
+  - urban share must satisfy ``(1 - frac_rural) * tot_pop >= min_pop``;
+  - rural per-node average must satisfy
+    ``frac_rural * tot_pop / (num_nodes - 1) >= min_pop`` (the tight case
+    where it equals ``min_pop`` is permitted; the exponential surplus is then
+    zero and every rural node lands at exactly ``min_pop``);
+  - ``frac_rural == 0`` requires ``num_nodes == 1`` and ``frac_rural > 0``
+    requires ``num_nodes >= 2`` (a rural budget needs a rural node, and vice
+    versa).
+
+  Replaces the prior ``1/U`` draw and the ``100/tot_pop`` magic clip with a
+  reserve-then-distribute construction: reserve ``min_pop`` per rural node,
+  draw the surplus from ``rng.exponential``, normalize the surplus to
+  ``frac_rural - num_rural * min_pop / tot_pop``, and add the reservation
+  back. Switches the random draw from ``np.random.rand`` to
+  ``laser.core.random.prng()`` per project convention, so seeding via
+  ``laser.core.random.seed`` now controls reproducibility. The sub-unit
+  rounding residual is now absorbed on the urban node (previously on a rural
+  node, which could dip the rural node below the floor). Updated
+  ``tests/test_spatialpops.py`` accordingly — bumped legacy test populations
+  to feasible values under the new default, switched seeding to
+  ``laser.core.random.seed``, and added given/when/then cases for the floor
+  invariant, the reproducibility contract, urban/rural infeasibility, the
+  tight-budget case (every rural node pinned at ``min_pop``), the
+  ``frac_rural`` / ``num_nodes`` coupling in both directions, the single-node
+  degenerate case, ``min_pop`` validation, and a scipy Kolmogorov-Smirnov
+  goodness-of-fit test (``tot_pop=10M``, ``num_nodes=1001``, ``min_pop=0``)
+  asserting that the 1000 rural populations are consistent with an
+  exponential distribution — a regression guard against future changes that
+  silently swap the random-draw shape.
 * Vectorize ``stouffer`` and ``radiation``: replace the per-source-node Python
   loop with a batched 2D ``_cumulative_at_or_closer_2d`` helper that does the
   per-row sort, cumulative-sum, and equidistant-tie repair across all rows in

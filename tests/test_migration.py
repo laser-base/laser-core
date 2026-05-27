@@ -7,13 +7,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from laser.core.migration import _sum_populations_as_close_or_closer
+from laser.core.migration import build_network
 from laser.core.migration import competing_destinations
 from laser.core.migration import distance
 from laser.core.migration import gravity
 from laser.core.migration import radiation
 from laser.core.migration import row_normalizer
 from laser.core.migration import stouffer
-from laser.core.migration import sum_populations_as_close_or_closer
 
 City = namedtuple("City", ["name", "pop", "lat", "long"])
 
@@ -940,7 +941,7 @@ class TestMigrationVectorizationRegression(unittest.TestCase):
         unsort_indices = np.argsort(sort_indices, axis=1)
         for i in range(len(pops)):
             sorted_pops = pops[sort_indices[i]]
-            cumulative = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            cumulative = _sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
             if not include_home:
                 cumulative = cumulative - sorted_pops[0]
             network[i, 1:] = k * pops[i] ** a * (sorted_pops[1:] / cumulative[1:]) ** b
@@ -958,7 +959,7 @@ class TestMigrationVectorizationRegression(unittest.TestCase):
         unsort_indices = np.argsort(sort_indices, axis=1)
         for i in range(len(pops)):
             sorted_pops = pops[sort_indices[i]]
-            cumulative = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            cumulative = _sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
             if not include_home:
                 cumulative = cumulative - sorted_pops[0]
             network[i] = k * pops[i] * sorted_pops / (pops[i] + cumulative) / (pops[i] + sorted_pops + cumulative)
@@ -1009,6 +1010,186 @@ class TestMigrationVectorizationRegression(unittest.TestCase):
             actual = stouffer(pops, distances, k=0.01, a=1.0, b=1.0, include_home=include_home)
             expected = self._reference_stouffer(pops, distances, 0.01, 1.0, 1.0, include_home=include_home)
             np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+
+class TestBuildNetwork(unittest.TestCase):
+    """Tests for the build_network() composition helper.
+
+    `build_network()` is a thin wrapper that runs a chosen migration model and,
+    optionally, normalizes rows so no row sum exceeds `max_rowsum`. These tests
+    pin both halves of that contract: bit-exact passthrough when normalization
+    is skipped, and equivalence to the explicit compose `row_normalizer(model_fn(...))`
+    when it isn't. They also confirm that `**model_params` reaches the underlying
+    model without being dropped, renamed, or shadowed by `max_rowsum`.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(seed=20260526)
+        n = 6
+        cls.pops = rng.integers(10_000, 500_000, size=n).astype(np.float64)
+        lat = rng.uniform(-60.0, 60.0, size=n)
+        lon = rng.uniform(-150.0, 150.0, size=n)
+        cls.distances = distance(lat, lon)
+        return
+
+    def test_passthrough_without_max_rowsum_gravity(self):
+        """Given a gravity model and no max_rowsum, when build_network runs, then output is bit-exact to gravity() directly.
+
+        Failure implies build_network is silently transforming model output even
+        when no normalization was requested — which would corrupt downstream
+        calibrations that depend on the raw model magnitudes.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        expected = gravity(self.pops, self.distances, **params)
+        actual = build_network(gravity, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_passthrough_without_max_rowsum_radiation(self):
+        """Given the radiation model and no max_rowsum, when build_network runs, then output is bit-exact to radiation() directly.
+
+        Confirms the passthrough contract is not gravity-specific and survives a
+        model with a different parameter shape (no a/b/c exponents, with include_home).
+        """
+        expected = radiation(self.pops, self.distances, k=0.1, include_home=False)
+        actual = build_network(radiation, self.pops, self.distances, k=0.1, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_applies_row_normalization_when_max_rowsum_given(self):
+        """Given max_rowsum, when build_network runs, then every row sum is at most max_rowsum.
+
+        Failure means the normalization step was skipped or applied with the
+        wrong bound — silently breaking the contract that downstream agent
+        movers depend on (per-row probabilities must not exceed the cap).
+        """
+        max_rowsum = 0.05
+        network = build_network(
+            gravity,
+            self.pops,
+            self.distances,
+            max_rowsum=max_rowsum,
+            k=0.1,
+            a=0.5,
+            b=1.0,
+            c=2.0,
+        )
+        # row_normalizer promotes to float32, so we allow a small numerical slack on the bound.
+        rowsums = network.sum(axis=1)
+        assert np.all(rowsums <= max_rowsum + 1e-6), f"row sums exceed max_rowsum={max_rowsum}: {rowsums}"
+
+    def test_equivalent_to_explicit_compose_with_max_rowsum(self):
+        """Given max_rowsum, when build_network runs, then output equals row_normalizer(model_fn(...), max_rowsum).
+
+        Pins the composition order: model first, then normalization. If the helper
+        ever silently reorders these steps or substitutes a different normalization,
+        this test will catch it before downstream numerical regressions appear.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        max_rowsum = 0.05
+        expected = row_normalizer(gravity(self.pops, self.distances, **params), max_rowsum)
+        actual = build_network(gravity, self.pops, self.distances, max_rowsum=max_rowsum, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_forwards_kwargs_to_model_fn(self):
+        """Given keyword model parameters, when build_network runs, then every kwarg reaches the model unchanged.
+
+        Verifies that **model_params forwarding does not drop, rename, or shadow
+        any parameter (in particular, that max_rowsum is excluded from the
+        forwarded kwargs and no other collision occurs). Failure here would
+        mean models silently fall back to defaults even when the caller passed
+        explicit values.
+        """
+        received = {}
+
+        def fake_model(pops, distances, **params):
+            received.update(params)
+            return np.zeros_like(distances, dtype=np.float64)
+
+        build_network(
+            fake_model,
+            self.pops,
+            self.distances,
+            max_rowsum=None,  # must NOT appear in forwarded kwargs
+            alpha=0.25,
+            beta="forwarded",
+            gamma=42,
+        )
+        assert received == {"alpha": 0.25, "beta": "forwarded", "gamma": 42}, f"forwarded kwargs differ from expected: {received}"
+
+    def test_passes_pops_and_distances_positionally_to_model_fn(self):
+        """Given a model_fn, when build_network runs, then it is invoked with (pops, distances) positionally.
+
+        The wrapper's contract is that the chosen model_fn receives populations
+        and the distance matrix as its first two positional arguments. Failure
+        here would mean callers can't use plain function objects as `model_fn`
+        without adapting their signatures.
+        """
+        captured = {}
+
+        def fake_model(pops, distances, **params):
+            captured["pops"] = pops
+            captured["distances"] = distances
+            return np.zeros_like(distances, dtype=np.float64)
+
+        build_network(fake_model, self.pops, self.distances)
+        assert captured["pops"] is self.pops, "pops was not forwarded as the first positional argument"
+        assert captured["distances"] is self.distances, "distances was not forwarded as the second positional argument"
+
+    def test_works_with_competing_destinations(self):
+        """Given competing_destinations as the model, when build_network runs, then output is bit-exact to competing_destinations() directly.
+
+        Confirms build_network is model-agnostic across all four published
+        migration models in this module — not just gravity.
+        """
+        params = {"k": 1.0, "a": 0.5, "b": 1.0, "c": 2.0, "delta": 0.5}
+        expected = competing_destinations(self.pops, self.distances, **params)
+        actual = build_network(competing_destinations, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_works_with_stouffer(self):
+        """Given stouffer as the model, when build_network runs, then output is bit-exact to stouffer() directly.
+
+        Stouffer takes `include_home` (a bool) rather than only numeric
+        exponents, so this also exercises kwarg forwarding for a non-numeric
+        keyword.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "include_home": False}
+        expected = stouffer(self.pops, self.distances, **params)
+        actual = build_network(stouffer, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_max_rowsum_none_is_default(self):
+        """Given build_network called with no max_rowsum, when it runs, then output equals the same call with max_rowsum=None.
+
+        Pins the default value of the keyword-only argument. A future signature
+        change that altered the default (e.g. to 1.0) would silently rescale
+        every returned network — this test catches that regression.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        with_default = build_network(gravity, self.pops, self.distances, **params)
+        with_explicit_none = build_network(gravity, self.pops, self.distances, max_rowsum=None, **params)
+        np.testing.assert_allclose(with_default, with_explicit_none, rtol=0.0, atol=0.0)
+
+    def test_invalid_max_rowsum_raises_via_row_normalizer(self):
+        """Given an out-of-range max_rowsum, when build_network runs, then row_normalizer's validation error propagates.
+
+        build_network itself adds no validation around max_rowsum; instead it
+        relies on row_normalizer to reject out-of-range values. This test pins
+        that delegation: if a future refactor swallows the error or pre-clamps
+        the value, downstream callers would silently see incorrect behavior
+        instead of an actionable exception.
+        """
+        with pytest.raises(ValueError, match=re.escape("max_rowsum must be in [0, 1]")):
+            build_network(
+                gravity,
+                self.pops,
+                self.distances,
+                max_rowsum=1.5,
+                k=0.1,
+                a=0.5,
+                b=1.0,
+                c=2.0,
+            )
 
 
 if __name__ == "__main__":

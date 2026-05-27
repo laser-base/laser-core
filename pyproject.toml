@@ -47,6 +47,7 @@ dev = [
     "pytest>=6.0",
     "black",
     "flake8",
+    "interrogate>=1.7",
     "tox",
     "tox-uv"
 ]
@@ -96,6 +97,7 @@ extend-exclude = ["static", "ci/templates"]
 ignore = [
     "RUF001", # ruff-specific rules ambiguous-unicode-character-string
     "RUF002", # ruff-specific rules ambiguous sigma looks like lowercase o
+    "RUF003", # ruff-specific rules "Comment contains ambiguous `×` (MULTIPLICATION SIGN)"
     "S101", # flake8-bandit assert
     "S308", # flake8-bandit suspicious-mark-safe-usage
     "E501", # pycodestyle line-too-long
@@ -189,3 +191,17 @@ replace = "/v{new_version}...main"
 filename = "docs/conf.py"
 search = 'version = release = "{current_version}"'
 replace = 'version = release = "{new_version}"'
+
+[tool.interrogate]
+# Docstring-coverage gate enforced in pre-commit (see .pre-commit-config.yaml).
+# Current coverage is 97.9%; the floor is set just below that so the build doesn't
+# flicker on noise but a regression of more than ~3% will fail.
+fail-under = 95
+ignore-init-method = true
+ignore-private = true
+ignore-magic = true
+ignore-property-decorators = true
+ignore-nested-functions = true
+verbose = 1
+quiet = false
+color = true

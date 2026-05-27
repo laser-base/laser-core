@@ -22,9 +22,12 @@ Functions:
         Compute a migration network using the radiation model, which models flows based on intervening population rather than physical distance.
 
     distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        Calculate the great-circle distance between two points on the Earth's surface
-        using the Haversine formula.
+        Calculate the great-circle distance between two points on the Earth's surface using the Haversine formula.
+
+    build_network(model_fn: Callable, pops: np.ndarray, distances: np.ndarray, max_rowsum: Optional[float], model_params) -> np.ndarray:
+        Build a migration network using the specified model function and parameters, with optional row normalization.
 """
+
 from numbers import Number
 
 import numpy as np
@@ -210,9 +213,7 @@ def competing_destinations(pops, distances, k, a, b, c, delta, **params):
 
 
 def _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d):
-    """Batched 2D analogue of [`sum_populations_as_close_or_closer`][laser.core.migration.sum_populations_as_close_or_closer].
-
-    For each row, returns `cumsum(sorted_pops_2d)` with any group of equidistant
+    """For each row, returns `cumsum(sorted_pops_2d)` with any group of equidistant
     destinations sharing the cumulative sum at the rightmost (largest) index of the group.
     This is the matrix used by the vectorized `stouffer` and `radiation` implementations.
 
@@ -241,7 +242,7 @@ def _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d):
     return np.take_along_axis(cumulative, group_end, axis=1)
 
 
-def sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
+def _sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
     r"""Cumulative sum of populations of all destinations at or closer than each candidate.
 
     Both `stouffer` and `radiation` need, for each destination `j`, the sum of populations at
@@ -308,7 +309,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
     Mathematical formula:
         Element-by-element:
             $$
-            network_{i,j} = k \times p_i \times p_j / ( (p_i + \sum_k {p_k}) (p_i + p_j + \sum_k {p_k}) )
+            network_{i,j} = k \times p_i^a \times (p_j / \sum_k {p_k} )^b,
             $$
             the parameter ``include_home`` determines whether $p_i$ is included or excluded from the sum
 
@@ -374,7 +375,7 @@ def radiation(pops, distances, k, include_home, **params):
     Mathematical formula:
         Element-by-element:
             $$
-            network_{i,j} = k \times p_i^a \times (p_j / \sum_k {p_k} )^b,
+            network_{i,j} = k \times p_i \times p_j / ( (p_i + \sum_k {p_k}) (p_i + p_j + \sum_k {p_k}) )
             $$
             where the sum proceeds over all $k$ such that $distances_{i,k} \leq distances_{i,j}$
             the parameter ``include_home`` determines whether $p_i$ is included or excluded from the sum.
@@ -503,6 +504,40 @@ def distance(lat1, lon1, lat2=None, lon2=None):
         return d.reshape((d.size,))  # return a vector (1-D)
 
     return d  # return NxM matrix (len(lat1/lon1) x len(lat2/lon2))
+
+
+def build_network(model_fn, pops, distances, *, max_rowsum=None, **model_params) -> np.ndarray:
+    """
+    Build a migration network using the specified model function and parameters.
+
+    Usage:
+
+        ```python
+        network = build_network(
+            model_fn=gravity,
+            pops=pops_array,
+            distances=distances_array,
+            max_rowsum=0.5,
+            k=0.5,
+            a=1.0,
+            b=1.0,
+            c=2.0
+        )
+        ```
+
+    Parameters:
+        model_fn (callable): A function that computes a migration network given populations, distances, and model parameters.
+        pops (numpy.ndarray): An array of population sizes for each node.
+        distances (numpy.ndarray): A 2D array of distances between nodes.
+        max_rowsum (float, optional): If provided, the maximum allowable sum for any row in the resulting network matrix. If None, no row normalization is applied.
+        model_params (dict): Additional parameters to be passed to the model function.
+    """
+    network = model_fn(pops, distances, **model_params)
+
+    if max_rowsum is not None:
+        network = row_normalizer(network, max_rowsum)
+
+    return network
 
 
 # Sanity checks
