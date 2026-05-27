@@ -228,6 +228,14 @@ def _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d):
 
     Returns:
         np.ndarray: 2D array of shape `(N, N)` with the corrected cumulative sums.
+
+    Raises:
+        ValueError: Propagated from `np.cumsum` / `np.take_along_axis` if
+            `sorted_pops_2d` and `sorted_distances_2d` have mismatched shapes
+            or are not 2D. Callers in this module (`stouffer`, `radiation`)
+            validate inputs via [`_sanity_checks`][laser.core.migration._sanity_checks]
+            before delegating, so this branch is only reachable when the helper
+            is called directly with malformed inputs.
     """
     cumulative = np.cumsum(sorted_pops_2d, axis=1).astype(np.float64, copy=False)
     n_cols = sorted_distances_2d.shape[1]

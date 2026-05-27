@@ -4,6 +4,28 @@ Changelog
 Unreleased
 ----------
 
+* Add ``laser.core.distributions.sample(fn_or_factory, n, *, dtype=None,
+  tick=0, node=0, out=None, **factory_kwargs)`` — a one-liner sampler that
+  allocates the output buffer and dispatches to ``sample_floats`` or
+  ``sample_ints`` based on dtype. When ``factory_kwargs`` are supplied, the
+  first argument is treated as a factory and invoked with those kwargs to
+  build the sampler on the fly, so per-call distribution parameters do not
+  need to be baked into the factory ahead of time. Seven new tests in
+  ``TestSampleConvenience`` cover pre-built and factory paths, explicit
+  ``out``/``dtype``, ``tick``/``node`` forwarding, and the non-numeric-dtype
+  rejection.
+* Switch the default ``population_fn`` in ``laser.core.utils.grid`` from
+  ``np.random.uniform`` to ``laser.core.random.prng().uniform``, so the
+  default population draws now honor the project-wide seeding contract
+  documented in ``CLAUDE.md``.
+* Add a ``Raises:`` section to ``_cumulative_at_or_closer_2d`` documenting
+  that ``ValueError`` propagates from ``np.cumsum`` / ``np.take_along_axis``
+  when called directly with mismatched-shape inputs (the in-package callers
+  validate via ``_sanity_checks`` before delegating).
+* Expand the ``LaserFrame`` class docstring from a single sentence into a
+  proper overview covering the property kinds (scalar / vector / array),
+  the preallocate-never-realloc design, the lifecycle helpers, and the
+  documented extension points.
 * Add sampler-composition helpers to ``laser.core.distributions``:
   ``mixture2(sampler_a, sampler_b, p_a)`` for two-component mixtures,
   ``tick_modulated(base_sampler, modulator)`` for tick-periodic multiplicative

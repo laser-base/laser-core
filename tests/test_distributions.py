@@ -249,5 +249,68 @@ class TestCompositionHelpers(unittest.TestCase):
         assert abs(out.mean() - 1.0) < 0.02, f"chained composition mean {out.mean()} not close to 1.0"
 
 
+class TestSampleConvenience(unittest.TestCase):
+    """Tests for the `distributions.sample()` one-liner wrapper.
+
+    These verify that `sample()` correctly (a) accepts a pre-built sampler and
+    auto-allocates the output buffer, (b) accepts a factory + kwargs and builds
+    the sampler on the fly, and (c) dispatches to `sample_floats` vs `sample_ints`
+    based on dtype. Failure here means callers using the new ergonomic shortcut
+    will get wrong dtypes, wrong shapes, or silently wrong distributions.
+    """
+
+    def test_sample_with_pre_built_sampler_floats(self):
+        """Given a pre-built float sampler, when we call sample(fn, n), then we get a length-n float32 array filled by the sampler."""
+        sampler = dists.constant_float(42.0)
+        out = dists.sample(sampler, n=500)
+        assert out.shape == (500,)
+        assert out.dtype == np.float32
+        assert np.all(out == np.float32(42.0))
+
+    def test_sample_with_pre_built_sampler_ints(self):
+        """Given a pre-built int sampler, when we call sample(fn, n), then we get a length-n int32 array filled by the sampler."""
+        sampler = dists.constant_int(7)
+        out = dists.sample(sampler, n=500)
+        assert out.shape == (500,)
+        assert out.dtype == np.int32
+        assert np.all(out == np.int32(7))
+
+    def test_sample_forwards_factory_kwargs(self):
+        """Given a factory + kwargs, when we call sample(factory, n, **kwargs), then it builds the sampler on the fly and samples from it."""
+        out = dists.sample(dists.uniform, n=NSAMPLES, low=10.0, high=11.0)
+        assert out.dtype == np.float32
+        assert np.all((out >= 10.0) & (out < 11.0))
+
+    def test_sample_with_explicit_out_buffer(self):
+        """Given an explicit out buffer, when we call sample(fn, ..., out=out), then n and dtype are taken from the buffer."""
+        sampler = dists.constant_float(3.14)
+        buf = np.empty(64, dtype=np.float32)
+        result = dists.sample(sampler, n=999, out=buf)  # n is ignored
+        assert result is buf
+        assert result.shape == (64,)
+        assert np.all(result == np.float32(3.14))
+
+    def test_sample_with_explicit_dtype(self):
+        """Given an explicit dtype, when we call sample(fn, n, dtype=dtype), then the output buffer uses that dtype."""
+        sampler = dists.constant_float(2.5)
+        out = dists.sample(sampler, n=100, dtype=np.float64)
+        assert out.dtype == np.float64
+        assert np.all(out == np.float64(2.5))
+
+    def test_sample_rejects_non_numeric_dtype(self):
+        """Given a non-numeric output dtype, when sample() runs, then TypeError is raised."""
+        sampler = dists.constant_float(1.0)
+        with pytest.raises(TypeError, match=r"output dtype must be integer or floating"):
+            dists.sample(sampler, n=10, dtype=np.bool_)
+
+    def test_sample_forwards_tick_and_node(self):
+        """Given tick and node, when sample() runs with a tick-modulated sampler, then the per-tick multiplier is applied."""
+        modulator = np.array([10.0, 20.0, 30.0, 40.0], dtype=np.float32)
+        sampler = dists.tick_modulated(dists.constant_float(1.0), modulator)
+        for tick in (0, 1, 2, 3):
+            out = dists.sample(sampler, n=50, tick=tick)
+            assert np.allclose(out, modulator[tick]), f"tick={tick}: got {out[0]}, expected {modulator[tick]}"
+
+
 if __name__ == "__main__":
     unittest.main()

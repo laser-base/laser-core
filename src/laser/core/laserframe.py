@@ -41,10 +41,49 @@ from laser.core.utils import calc_capacity
 
 
 class LaserFrame:
+    """Dynamically-allocated agent / patch data store, similar to a Pandas DataFrame.
+
+    Each `LaserFrame` is a fixed-capacity columnar table where every property
+    (column) is a NumPy array preallocated to `capacity` entries, and an internal
+    `count` tracks how many entries are currently active. Properties are read back
+    as slices of length `count` (so `lf.age` returns the active subset, not the
+    full backing array) but the underlying buffer never resizes — this is the
+    "preallocate memory, never realloc" design principle documented in
+    `docs/architecture.rst`.
+
+    Three property kinds are supported:
+
+    - **Scalar** (one value per entry): [`add_scalar_property`][laser.core.LaserFrame.add_scalar_property].
+    - **Vector** (a fixed-length 1D vector per entry, stored as `(length, capacity)`):
+      [`add_vector_property`][laser.core.LaserFrame.add_vector_property].
+    - **Array** (arbitrary shape, not tied to capacity):
+      [`add_array_property`][laser.core.LaserFrame.add_array_property].
+
+    Lifecycle helpers include [`add`][laser.core.LaserFrame.add] to activate
+    additional entries, [`sort`][laser.core.LaserFrame.sort] to reorder them,
+    [`squash`][laser.core.LaserFrame.squash] to compact, and
+    [`save_snapshot`][laser.core.LaserFrame.save_snapshot] /
+    [`load_snapshot`][laser.core.LaserFrame.load_snapshot] for HDF5 persistence.
+
+    Attributes:
+        count (int): Number of currently-active entries (`0 <= count <= capacity`).
+        capacity (int): Fixed maximum capacity set at construction; immutable.
+
+    See also:
+        - The "Extension Points" section of `docs/architecture.rst` for the recommended
+          pattern when subclassing `LaserFrame` for model-specific frames.
+        - `docs/usage.rst` for a runnable quick-start.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import LaserFrame
+
+        frame = LaserFrame(capacity=10_000)
+        frame.add_scalar_property("age", dtype=np.int32, default=0)
+        start, end = frame.add(100)
+        frame.age[start:end] = np.arange(100)
     """
-    The LaserFrame class, similar to a db table or a Pandas DataFrame, holds dynamically
-    allocated data for agents (generally 1-D or scalar) or for nodes|patches (e.g., 1-D for
-    scalar value per patch or 2-D for time-varying per patch)."""
 
     def __init__(self, capacity: int, initial_count: int = -1, **kwargs):
         """

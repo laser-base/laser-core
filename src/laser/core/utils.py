@@ -14,6 +14,8 @@ import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
 
+from laser.core.random import prng
+
 
 def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
     """
@@ -103,9 +105,12 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
         raise ValueError("origin_y must be -90 <= origin_y < 90")
 
     if population_fn is None:
+        # Use the LASER-wide PRNG so the default population draws are reproducible via
+        # `laser.core.random.seed`, per the convention documented in CLAUDE.md.
+        _grid_rng = prng()
 
         def population_fn(row: int, col: int) -> int:
-            return int(np.random.uniform(1_000, 100_000))
+            return int(_grid_rng.uniform(1_000, 100_000))
 
     states = states or ["S", "E", "I", "R"]
 

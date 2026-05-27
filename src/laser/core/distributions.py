@@ -583,3 +583,64 @@ def node_modulated(base_sampler, modulator):
         return np.float32(modulator[_node] * base_sampler(_tick, _node))
 
     return _node_modulated
+
+
+def sample(fn_or_factory, n, *, dtype=None, tick=0, node=0, out=None, **factory_kwargs):
+    """One-liner sampler: allocate a buffer and dispatch to the right `sample_*` kernel.
+
+    Wraps the typical two-step "build sampler, allocate buffer, call `sample_floats` /
+    `sample_ints`" pattern into a single call. Also forwards `**factory_kwargs` to
+    `fn_or_factory` when it is a factory (e.g. [`normal`][laser.core.distributions.normal])
+    rather than a pre-built sampler, so per-call distribution parameters do not need to be
+    baked into the sampler factory ahead of time.
+
+    Args:
+        fn_or_factory: Either a Numba-wrapped sampler `(tick, node) -> scalar`, OR a factory
+            function (e.g. [`normal`][laser.core.distributions.normal]) that takes
+            `**factory_kwargs` and returns such a sampler.
+        n (int): Number of samples to draw. Ignored when `out` is provided.
+        dtype (np.dtype, optional): Output array dtype. Inferred from a probe call to the
+            sampler when omitted. Must be either an integer or floating dtype.
+        tick (int, optional): Simulation tick forwarded to the sampler (default `0`).
+        node (int, optional): Node index forwarded to the sampler (default `0`).
+        out (np.ndarray, optional): Pre-allocated output buffer. If provided, `n` and
+            `dtype` are ignored and the buffer's shape/dtype drive the call.
+        **factory_kwargs: Additional keyword arguments forwarded to `fn_or_factory` if and
+            only if `factory_kwargs` is non-empty. The result of that call is then used as
+            the sampler. Ignored otherwise.
+
+    Returns:
+        np.ndarray: The output array, filled in place.
+
+    Raises:
+        TypeError: If the resolved dtype is neither integer nor floating.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import distributions as dist
+
+        # One-liner: factory + sampling in a single call.
+        out = dist.sample(dist.normal, n=1_000, loc=0.0, scale=1.0)
+
+        # Or pass a pre-built sampler when you want to reuse it.
+        gaussian = dist.normal(loc=0.0, scale=1.0)
+        out = dist.sample(gaussian, n=1_000)
+    """
+    fn = fn_or_factory(**factory_kwargs) if factory_kwargs else fn_or_factory
+
+    if out is None:
+        if dtype is None:
+            # Probe the sampler once to infer integer vs. floating output. Numba
+            # auto-unboxes the return value to a Python `int`/`float`, so `np.asarray`
+            # alone would report `int64`/`float64`; we want to match the project-wide
+            # int32/float32 convention used by the distribution factories.
+            probe = fn(int(tick), int(node))
+            dtype = np.int32 if isinstance(probe, (int, np.integer)) else np.float32
+        out = np.empty(int(n), dtype=dtype)
+
+    if np.issubdtype(out.dtype, np.integer):
+        return sample_ints(fn, out, tick=tick, node=node)
+    if np.issubdtype(out.dtype, np.floating):
+        return sample_floats(fn, out, tick=tick, node=node)
+    raise TypeError(f"sample() output dtype must be integer or floating (got {out.dtype})")
