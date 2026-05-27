@@ -4,9 +4,9 @@
 - **Tier**: 1 (Software library or digital public good used by many people for many years)
 - **Overall Score**: 89/100
 - **Status**: PASS
-- **Date**: 2026-05-26
+- **Date**: 2026-05-27
 - **Version**: idm-eng-plugin:eng-quality-checker v1.3_2026.04.13
-- **Time spent**: 132s
+- **Time spent**: 167s
 
 ## Summary
 
@@ -19,47 +19,41 @@
 
 | Metric | Score | Notes |
 | -- | -- | -- |
-| correct | 9/10 | 265 tests on 3-OS / 2-Python CI, bit-equivalence regression tests for every vectorized migration kernel, all API-boundary `assert`s swept to `ValueError`/`TypeError`, `100/tot_pop` magic number removed; one small remaining PRNG-convention slip in `utils.grid()` default population_fn. |
-| clear | 9/10 | Modular structure, descriptive names, Google-style docstrings enforced via `interrogate` at 97.9% (95% gate), ruff+black via pre-commit, inline citations on all migration models; only minor gaps: `_cumulative_at_or_closer_2d` lacks a `Raises:` section and the `LaserFrame` class docstring is one sentence. |
-| concise | 9/10 | Shared `_validation.py` removes duplication; full vectorization of all four migration models; `lru_cache` prevents redundant Numba JIT; minor cosmetic: `benchmarks.yml` still carries TODO scaffolding inline. |
-| simple | 8/10 | Public surface clearly delimited, quick-start runnable, validation errors descriptive; `distributions` workflow still requires a two-step buffer-allocate + `sample_floats` chain. |
-| powerful | 8/10 | All migration model parameters keyword-arg-driven, `build_network` accepts any conforming callable, three explicit extension points documented in `architecture.rst`, and three new composition helpers (`mixture2`, `tick_modulated`, `node_modulated`) ship with tests; `sample_floats`/`sample_ints` lack `**kwargs` forwarding for `tick`/`node`. |
-| performant | 9/10 | All five migration functions + `distance` fully vectorized (documented in `migration.rst` Performance section); `numba.njit(parallel=True)` with `prange` in distribution kernels; `pytest-benchmark` suite covering migration, distributions, KaplanMeierEstimator, and SortedQueue; CI workflow runs but is still `continue-on-error: true` pending baseline capture. |
-| documented | 8/10 | `__init__.py` enumerates the public surface; `CLAUDE.md` + `.claude/skills/laser-core.md` orient AI assistants; `docs/usage.rst` quick-start; `docs/migration.rst` has both Performance characteristics and Choosing a model sections; `docs/architecture.rst` has Extension Points with worked examples; three Sphinx example walkthroughs; `**Example**` blocks on every public distribution. Two gaps: per-folder READMEs not present in `src/laser/core/` or `src/laser/core/demographics/`, and `docs/calibration.rst` doesn't exercise the public API. |
-| accessible | 9/10 | PyPI-published (v1.0.2), MIT-licensed, GitHub `laser-base/laser-core`, CHANGELOG/CONTRIBUTING/AUTHORS, ReadTheDocs, README `Support and contact` section, repo-root `CLAUDE.md`, and a Claude Code skill manifest at `.claude/skills/laser-core.md`; the manifest is a static file rather than a live MCP endpoint. |
+| correct | 9/10 | 271 tests on 3-OS / 2-Python CI, given/when/then test docstrings, bit-equivalence regression coverage on every vectorized migration kernel, all API-boundary `assert`s swept, magic number removed, formulas fixed; remaining nits: `LaserFrame.add` docstring still says `AssertionError` while the code now raises `ValueError`, and the `RE = 6371.0` constant is documented inline but not formally cited. |
+| clear | 9/10 | One-module-per-concern layout, `interrogate` at 97.8% (95% gate), Google-style docstrings on all public APIs; `SortedQueue` class docstring is sparse (no Attributes/Example) compared to the rest of the codebase. |
+| concise | 9/10 | Validation deduplicated into `_validation.py`, migration kernels fully vectorized, `lru_cache` on distribution factories, ruff+black via pre-commit; only a small parameter-validation repetition pattern in `_sanity_checks`. |
+| simple | 8/10 | Public surface clearly enumerated, `build_network` and the new `sample()` collapse common workflows into one-liners, validation errors descriptive; **concrete bug**: the distribution snippet in `docs/usage.rst` uses a stale API (`distributions.poisson(rng, lam=3.0, out=out)`) that doesn't match the actual factory + `sample_floats`/`sample_ints` (or new `sample()`) pattern. |
+| powerful | 9/10 | Four migration models with all parameters exposed; three sampler-composition helpers (`mixture2`, `tick_modulated`, `node_modulated`); `build_network` accepts any conforming callable; `LaserFrame` subclassing pattern documented with worked examples in `docs/architecture.rst`; `PropertySet` composes with `+=`/`<<=`/`|=`. No plugin registry, but the plain-function convention is documented. |
+| performant | 7/10 | All five migration models and `distance` fully vectorized; `numba.njit(parallel=True)` on hot kernels; `pytest-benchmark` suite covering migration / distributions / KMEstimator / SortedQueue. **Two concrete gaps**: (a) CI workflow still runs `continue-on-error: true` with no committed baseline, so regressions are not actually gated; (b) `benchmarks/test_distributions_benchmarks.py` references a stale API (`distributions.constant`, `distributions.poisson(rng, ...)`) that would fail on execution. |
+| documented | 9/10 | Multi-layered docs: `__init__.py`, `CLAUDE.md`, `.claude/skills/laser-core.md`, `docs/usage.rst` quick-start, `docs/migration.rst` (Choosing a model + Performance), `docs/architecture.rst` (Extension Points), three Sphinx walkthroughs, `**Example**` blocks on every public distribution. Same stale `usage.rst` distribution snippet flagged under `simple` also affects this metric; per-folder READMEs under `src/laser/core/` / `src/laser/core/demographics/` not present. |
+| accessible | 9/10 | PyPI-published (v1.0.2), MIT-licensed, `CHANGELOG.rst` / `CONTRIBUTING.rst` / `AUTHORS.rst`, README `Support and contact` section, repo-root `CLAUDE.md`, Claude Code skill manifest at `.claude/skills/laser-core.md`. No `CODE_OF_CONDUCT.md`. |
 | compliant | 10/10 | MIT license, no secrets, all runtime deps permissively licensed (BSD/MIT), all key community files present. |
-| reproducible | 10/10 | `>=` lower bounds on every runtime dep in `pyproject.toml`; `random.py` exposes a seedable PRNG used throughout; semver tags v0.5.1 → v1.0.2; package published on PyPI (HTTP 200). |
+| reproducible | 10/10 | `>=` lower bounds on every runtime dep, `uv.lock` committed, deterministic seeding via `random.py` used throughout (including the recently-fixed `utils.grid` default `population_fn`), semver tags through v1.0.2, package on PyPI (HTTP 200). |
 
-`laser.core` is up to **89/100**, a +3 jump from the prior 86. Quality climbed from 83→90 with the assert-sweep, the magic-number rework, the docstring formula fix, and the `interrogate` gate; Usability climbed from 81→83 with the sampler-composition helpers, the architecture extension docs, and the migration tradeoff/perf sections; Safety stays at a perfect 100. The remaining gaps are tightly scoped: an unenforced benchmark CI gate (needs a CI hardware baseline capture), a couple of per-folder README stubs, the `distributions` two-step sampling ergonomics, and a handful of small docstring polish items.
+`laser.core` holds at **89/100** overall, with meaningful internal movement: `powerful` 8→9 (sampler-composition helpers + `sample()` + `build_network` all credited), `documented` 8→9 (LaserFrame class docstring + Extension Points + Choosing a model sections), and `performant` 8→7 (regression — the auditor surfaced two concrete bugs: the still-advisory benchmark CI gate AND a stale distributions-API snippet in both `docs/usage.rst` and `benchmarks/test_distributions_benchmarks.py`). Safety stays perfect at 100/100. The two stale-API bugs are the most actionable next items; fixing them alone would project ~92/100.
 
 ## Recommendations
 
-1. **performant — Commit the benchmark CI baseline and flip to enforcing** *(effort: medium; automated: partial)*
-   This is the single largest remaining lever. Trigger the `benchmarks` workflow via `workflow_dispatch` on a clean main commit (with a `--benchmark-save=main` opt-in input), download the resulting JSON artifact from CI, commit it as `.benchmarks/Linux-CPython-3.12-64bit/main.json`, then in [.github/workflows/benchmarks.yml](.github/workflows/benchmarks.yml) remove `continue-on-error: true` and add a `--benchmark-compare=...main.json --benchmark-compare-fail=min:25%` step. The full step-by-step is documented in the prior conversation. Also update [benchmarks/README.md](benchmarks/README.md) to remove the "starter placeholders" caveat.
+1. **performant / simple / documented — Fix the stale `distributions` API references** *(effort: quick; automated: yes)*
+   Two specific places call a `distributions.poisson(rng, lam=3.0, out=out)` / `distributions.constant(...)` API that does not exist; the actual pattern is `sampler = distributions.poisson(lam=3.0)` followed by `distributions.sample_floats(sampler, out)` (or the new one-liner `distributions.sample(distributions.poisson, n=N, lam=3.0)`). Update [docs/usage.rst](docs/usage.rst) (the "Sampling from a distribution" snippet) and [benchmarks/test_distributions_benchmarks.py](benchmarks/test_distributions_benchmarks.py) (every benchmark function). This single fix recovers `performant` 7→8 (the runtime bug), `simple` 8→9, and `documented` 9→10.
 
-2. **simple / powerful — Add a one-shot `sample(...)` convenience to `distributions`** *(effort: quick; automated: yes)*
-   Wrap the typical `out = np.empty(N, dtype=...); sample_floats(fn, out)` chain into `distributions.sample(fn, n, *, dtype=None, tick=0, node=0)` that allocates the buffer, dispatches to `sample_floats` or `sample_ints` based on the sampler's return dtype, and returns the array. Keep the existing low-level functions for cases where the caller wants to control buffer allocation.
+2. **performant — Commit the benchmark CI baseline and flip the workflow to enforcing** *(effort: medium; automated: partial)*
+   The largest remaining lever for `performant`. Trigger the `benchmarks` workflow via `workflow_dispatch` on a clean main commit with a `--benchmark-save=main` opt-in, download the JSON artifact, commit it as `.benchmarks/Linux-CPython-3.12-64bit/main.json`, then remove `continue-on-error: true` from [.github/workflows/benchmarks.yml](.github/workflows/benchmarks.yml) and add the comparison step with `--benchmark-compare-fail=min:25%`. Step-by-step is documented in a prior conversation.
 
-3. **documented — Add per-folder READMEs to `src/laser/core/` and `src/laser/core/demographics/`** *(effort: quick; automated: yes)*
-   Short index pages naming each module's public surface and linking to the relevant `docs/` references. These had been added in an earlier pass and may have been removed; restore them.
+3. **correct — Fix the docstring on `LaserFrame.add` (and any sibling) that still mentions `AssertionError`** *(effort: quick; automated: yes)*
+   The implementation was updated to raise `ValueError` but the docstring still advertises `AssertionError`. Update the `Raises:` section to match.
 
-4. **correct — Switch `utils.grid()` default `population_fn` to `laser.core.random.prng()`** *(effort: quick; automated: yes)*
-   Replace the inline `np.random.uniform(1_000, 100_000)` default in [src/laser/core/utils.py](src/laser/core/utils.py) with a `prng().uniform(...)` call. This is the only place in the project that violates the PRNG-via-`random.py` convention documented in `CLAUDE.md` and is one of the gates that holds `correct` at 9 instead of 10.
+4. **clear — Flesh out the `SortedQueue` class docstring** *(effort: quick; automated: no)*
+   Bring it in line with the recently-expanded `LaserFrame` and `AliasedDistribution` class docstrings: short overview, `Attributes:` block, and a runnable `**Example**` showing push/peek/pop.
 
-5. **clear — Add a `Raises:` section to `_cumulative_at_or_closer_2d` and expand the `LaserFrame` class docstring** *(effort: quick; automated: yes)*
-   The private helper documents inputs/outputs but not the `TypeError`/`ValueError` paths inherited from the validation helpers. The `LaserFrame` class docstring is currently one sentence — promote a short overview from the module docstring up to the class.
+5. **documented — Add per-folder READMEs under `src/laser/core/` and `src/laser/core/demographics/`** *(effort: quick; automated: yes)*
+   These had been added in an earlier pass; restore them so each major area has a one-page index of its public surface and pointers to the relevant `docs/` references.
 
-6. **documented — Rework `docs/calibration.rst` to exercise the public API end-to-end** *(effort: medium; automated: no)*
-   The calibration page sits alongside the architecture / migration / usage docs but does not demonstrate a calibration that actually drives the migration models or the demographics utilities. A short worked example (synthetic data + `build_network` + a minimizer wrapper) would close the most concrete documentation gap.
+6. **accessible — Add a `CODE_OF_CONDUCT.md`** *(effort: quick; automated: yes)*
+   Use the standard Contributor Covenant 2.1 template; reference it from `CONTRIBUTING.rst`.
 
-7. **powerful — Forward `**kwargs` through `sample_floats` / `sample_ints` to the sampler** *(effort: quick; automated: yes)*
-   Today these helpers only forward `tick` and `node`. Forwarding arbitrary keyword arguments would let composition helpers expose per-call state without baking it into the sampler factory.
-
-8. **accessible — Consider an MCP server in addition to the skill manifest** *(effort: medium; automated: no)*
-   The `.claude/skills/laser-core.md` file closed most of the AI-orientation gap. The 10/10 rubric anchor specifically mentions skills *and* MCP; a small MCP server that surfaces the public API and recent `engineering_score.md` would close the remaining usability point. Optional — the skill manifest alone is already meaningful.
-
-9. **concise — Clean up the inline TODO scaffolding in `.github/workflows/benchmarks.yml`** *(effort: quick; automated: yes)*
-   Once recommendation #1 lands, delete the two TODO comment blocks. They reference the exact steps that will have been done.
+7. **correct — Add a citation comment for `RE = 6371.0`** *(effort: quick; automated: no)*
+   One-liner: cite IUGG / WGS84 / a standard reference next to the existing `# Earth radius in km` comment in [src/laser/core/migration.py](src/laser/core/migration.py).
 
 ## Full Results
 
@@ -72,52 +66,52 @@ quality:
   correct:
     score: 9
     weight: 7
-    reason: "Comprehensive 265-test suite with per-module coverage including bit-equivalence regression tests for all vectorized migration models and KS-distribution tests for all samplers; CI matrix runs Python 3.10 and 3.14 on three OSes; migration models cite published references; API boundaries use `TypeError`/`ValueError`. The one remaining PRNG-convention slip is in `utils.grid()` whose default `population_fn` uses `np.random.uniform` directly instead of `prng()`."
+    reason: "271 tests pass on 3-OS / 2-Python CI with ruff+black+interrogate enforced via pre-commit, tests carry given/when/then docstrings and serve as documentation. Migration models cite published references; the single remaining undocumented magic number is `RE = 6371.0` (with an inline `# Earth radius in km` comment but no formal IUGG/WGS84 citation), and `LaserFrame.add` docstring still references `AssertionError` while the implementation now raises `ValueError`."
   clear:
     score: 9
     weight: 2
-    reason: "One-module-per-concern layout with descriptive names, Google-style docstrings enforced via interrogate at 97.9% coverage (95% gate), ruff/black pre-commit hooks, and inline citations for all published model parameters. The only gaps are that `_cumulative_at_or_closer_2d` lacks a `Raises:` section and the `LaserFrame` class docstring is a single sentence."
+    reason: "Well-organized one-module-per-concern structure; interrogate reports 97.8% docstring coverage (gate is 95%); all public API functions have Google-style docstrings with Args/Returns/Raises/Example blocks. `SortedQueue` class docstring is sparse (no Attributes or Example block) compared to the rest of the codebase."
   concise:
     score: 9
     weight: 1
-    reason: "No avoidable duplication; shared validation extracted to `_validation.py`; vectorized NumPy replaces O(N^2) Python loops in all migration models; `lru_cache` prevents redundant Numba JIT compilation; ruff+black enforced via pre-commit. The only marginal issue is the inline TODO scaffolding in `benchmarks.yml`."
+    reason: "No significant copy-paste duplication; vectorized NumPy and Numba parallel kernels replace per-agent/per-row Python loops throughout; `_sanity_checks` centralizes repetitive input validation. The validation block uses a repeated `params.get()` two-liner per parameter that could be a small loop, but this is a minor style nit."
 usability:
   simple:
     score: 8
     weight: 3
-    reason: "Public surface clearly delimited in `__init__.py` and `docs/usage.rst` provides a runnable quick-start; `_validation` raises descriptive `ValueError`/`TypeError`. The gap holding it back from 9 is the two-step buffer-allocate + `sample_floats` distribution-sampling chain, which could be a one-liner with a convenience wrapper."
+    reason: "Public surface clearly defined; `build_network` and `sample` collapse common workflows into one-liners; thorough `ValueError`/`TypeError` validation at all boundaries. Concrete bug: the distribution snippet in `docs/usage.rst` shows a stale `distributions.poisson(rng, lam=3.0, out=out)` API that does not match the actual factory pattern, which would mislead a new user copying the quick-start."
   powerful:
-    score: 8
-    weight: 2
-    reason: "All migration model parameters are keyword arguments; `build_network` accepts any callable following the `(pops, distances, **params)` convention; three explicit extension points documented in `docs/architecture.rst`; new composition helpers `mixture2`, `tick_modulated`, `node_modulated` expand the distributions API. The slight gap is that `sample_floats`/`sample_ints` lack `**kwargs` forwarding to the sampler."
-  performant:
     score: 9
     weight: 2
-    reason: "All four migration models plus `distance` fully vectorized (documented in `docs/migration.rst` Performance characteristics); `distributions.sample_floats`/`sample_ints` use `numba.njit(parallel=True)` with `prange`; `pytest-benchmark` suite covering migration, distributions, `KaplanMeierEstimator`, and `SortedQueue` lives under `benchmarks/`. The CI workflow runs but is still `continue-on-error: true` with no committed baseline."
-  documented:
-    score: 8
+    reason: "Four migration models with fully exposed parameters; three sampler-composition helpers (mixture2, tick_modulated, node_modulated); `build_network` accepts any compliant callable; `LaserFrame` subclassable with worked examples; `PropertySet` supports +=/<<=/|= composition. No plugin registry but the plain-function convention is explicitly the preferred extension path."
+  performant:
+    score: 7
     weight: 2
-    reason: "Multi-layered docs: `__init__.py`, `CLAUDE.md`, `.claude/skills/laser-core.md`, `docs/usage.rst` quick-start, `docs/migration.rst` (Choosing a model + Performance characteristics), `docs/architecture.rst` (Extension Points), three Sphinx walkthroughs, `**Example**` blocks on every public distribution. Two gaps: per-folder READMEs not present in `src/laser/core/` or `src/laser/core/demographics/`, and `docs/calibration.rst` doesn't exercise the public API."
+    reason: "All five migration models and `distance` fully vectorized; sampling hot paths use `numba.njit(parallel=True)`; pytest-benchmark suite covers migration, KM estimator, and SortedQueue. The CI benchmark workflow runs `continue-on-error: true` with no committed baseline so no regression is actually caught, and `benchmarks/test_distributions_benchmarks.py` calls a stale API (`distributions.constant`, `distributions.poisson(rng, ...)`) that does not exist in the current module and would fail on execution."
+  documented:
+    score: 9
+    weight: 2
+    reason: "Comprehensive docs covering quick-start, design principles + subclassing patterns, migration model tradeoffs and numerical edge cases, performance guidance, and three end-to-end tutorials plus Jupyter notebooks; all 13 distribution factories have runnable `**Example**` blocks; `LaserFrame` class docstring covers the full design. The stale distribution example in `usage.rst` and the absence of per-folder READMEs under `src/laser/core/` and `src/laser/core/demographics/` keep this just below a perfect score."
   accessible:
     score: 9
     weight: 1
-    reason: "Published on PyPI as `laser-core` v1.0.2 (single-command install), MIT license, GitHub `laser-base/laser-core`, ships `CHANGELOG.rst`, `CONTRIBUTING.rst`, `AUTHORS.rst`, `pyproject.toml`-based build, README `Support and contact` section, repo-root `CLAUDE.md`, and a Claude Code skill manifest at `.claude/skills/laser-core.md`. The skill manifest is a static file rather than a registered MCP endpoint."
+    reason: "Published on PyPI (`pip install laser-core`), MIT license, CHANGELOG.rst, CONTRIBUTING.rst, maintainer emails and issue tracker in `README.rst`, and AI-orientation files (`CLAUDE.md` + `.claude/skills/laser-core.md`). The only standard file missing is a `CODE_OF_CONDUCT.md`, which is expected for a Tier-1 community-facing library."
 safety:
   compliant:
     score: 10
     weight: 6
-    reason: "MIT license confirmed at the repo root; no exposed secrets, API keys, or PII found; all key runtime dependencies (numpy, numba, pandas, geopandas, shapely, h5py, matplotlib, click) carry BSD/MIT/permissive licenses; AUTHORS.rst, CHANGELOG.rst, and CONTRIBUTING.rst all present."
+    reason: "MIT license confirmed at the repo root; no hardcoded secrets, tokens, or PII found anywhere in source; all runtime dependencies (numpy, numba, pandas, geopandas, shapely, h5py, matplotlib, click) carry BSD/MIT/permissive licenses; AUTHORS.rst, CONTRIBUTING.rst, and CHANGELOG.rst with an Unreleased section are all present."
   reproducible:
     score: 10
     weight: 4
-    reason: "All key dependencies have `>=` lower-bound pins in `pyproject.toml`; `laser.core.random` exposes a fully seedable PRNG used throughout; semver git tags v0.5.1 → v1.0.2; PyPI returned HTTP 200 confirming the package is published."
+    reason: "All runtime deps in `pyproject.toml` carry `>=` lower-bound pins; `uv.lock` provides a full lock file; semantic version tags run through v1.0.2; `laser-core` is published on PyPI (HTTP 200); process-wide PRNG seedability is enforced via `laser.core.random.seed()` and now consumed by every in-package call site including the recently-fixed `utils.grid` default `population_fn`."
 ```
 
 ## Notes
 
 - **General scoring principle**: If no specific improvements can be identified for a metric, score 10/10. If scoring below 10, always list the specific improvements that would raise the score. Don't dock points for theoretical issues — only for concrete, observable problems.
-- **Score delta vs. previous audit (86 → 89, +3)**:
-  - **Quality 83→90 (+7)**: `correct` 8→9 (asserts swept, magic number removed, formulas fixed) and `concise` held at 9 (vectorization complete) and `clear` held at 9 (interrogate gate active).
-  - **Usability 81→83 (+2)**: `performant` 8→9 (stouffer/radiation now vectorized, benchmark CI live as advisory) and `simple`/`powerful`/`documented`/`accessible` held at their prior 8/8/8/9 values.
-  - **Safety 100 (held)**: no changes; both metrics already maxed.
-- **Top remaining lever**: locking in benchmark baselines on CI hardware and flipping the workflow to enforcing (`continue-on-error: false` + `--benchmark-compare-fail`). That alone would project `performant` 9→10 and overall 89→~90.
+- **Score delta vs. previous audit (89 → 89, flat overall, with internal churn)**:
+  - **Improved**: `powerful` 8→9 (sampler-composition helpers + `sample()` + `build_network` credited), `documented` 8→9 (LaserFrame class docstring + Choosing a model + Extension Points sections).
+  - **Regressed**: `performant` 8→7 — the auditor surfaced two concrete bugs that had been latent: the benchmark CI gate is still advisory (known) AND `benchmarks/test_distributions_benchmarks.py` references a stale `distributions.constant` / `distributions.poisson(rng, ...)` API that would fail to execute.
+  - **New observations not previously flagged**: stale distribution snippet in `docs/usage.rst`, `LaserFrame.add` docstring still says `AssertionError`, `SortedQueue` class docstring is sparse, missing `CODE_OF_CONDUCT.md`.
+- **Top remaining lever**: fixing recommendation #1 (the stale `distributions` API references) is a quick, automatable change that would clear the new `performant`-7 regression AND raise both `simple` and `documented` to 9/10 simultaneously — projecting overall **89 → ~92**.
