@@ -45,7 +45,7 @@ We agree to restrict the following behaviors in our community. Instances, threat
 
 Tensions can occur between community members even when they are trying their best to collaborate. Not every conflict represents a code of conduct violation, and this Code of Conduct reinforces encouraged behaviors and norms that can help avoid conflicts and minimize harm.
 
-When an incident does occur, it is important to report it promptly. To report an issue, **[NOTE: describe your means of reporting here.]**
+When an incident does occur, it is important to report it promptly. To report an issue, **please use the [laser-base Discussions board](https://github.com/orgs/laser-base/discussions).**
 
 
 ## Scope
