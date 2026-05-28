@@ -73,7 +73,7 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     return estimates
 
 
-def grid(M=5, N=5, node_size_degs=0.08983, population_fn: Callable[[int, int], int] | None=None, origin_x=0, origin_y=0, states=None):
+def grid(M=5, N=5, node_size_degs=0.08983, population_fn: Callable[[int, int], int] | None = None, origin_x=0, origin_y=0, states=None):
     """
     Create an MxN grid of cells anchored at (lat, long) with populations and geometries.
 

@@ -35,6 +35,6 @@ def test_sortedqueue_pop_10k(benchmark):
     def _run():
         sq = _make_queue(capacity=20_000, n_pre=10_000)
         while len(sq) > 0:
-            sq.pop()
+            sq.popi()  # could be popv() or popiv() as well
 
     benchmark(_run)

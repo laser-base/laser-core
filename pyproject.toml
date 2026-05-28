@@ -44,10 +44,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=6.0",
     "black",
     "flake8",
     "interrogate>=1.7",
+    "pytest>=6.0",
+    "pytest-benchmark>=5.2.3",
     "tox",
     "tox-uv"
 ]
@@ -205,3 +206,8 @@ ignore-nested-functions = true
 verbose = 1
 quiet = false
 color = true
+
+[dependency-groups]
+dev = [
+    "pytest-benchmark>=5.2.3",
+]

@@ -636,7 +636,7 @@ def sample(fn_or_factory, n, *, dtype=None, tick=0, node=0, out=None, **factory_
             # alone would report `int64`/`float64`; we want to match the project-wide
             # int32/float32 convention used by the distribution factories.
             probe = fn(int(tick), int(node))
-            dtype = np.int32 if isinstance(probe, (int, np.integer)) else np.float32
+            dtype = np.int32 if isinstance(probe, int | np.integer) else np.float32
         out = np.empty(int(n), dtype=dtype)
 
     if np.issubdtype(out.dtype, np.integer):
