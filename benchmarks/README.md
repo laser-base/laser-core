@@ -48,3 +48,11 @@ When a perf-impacting change lands and you want to accept the new numbers as the
 new floor, trigger the `benchmarks` workflow manually (Actions → benchmarks →
 Run workflow → check `save_baseline`), download the resulting artifact, and
 replace `.benchmarks/Linux-CPython-3.12-64bit/baseline.json` in a new PR.
+
+### Note
+
+**Python version locks the machine-id**. The path `Linux-CPython-3.12-64bit` is
+derived from the runner's Python. If you upgrade the workflow to Python 3.13, you'll
+need to recapture and commit a new baseline at `Linux-CPython-3.13-64bit/main.json`.
+Either pin Python and call it done, or set up the workflow to capture baselines for
+both versions.

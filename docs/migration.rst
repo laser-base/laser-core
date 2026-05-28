@@ -2,19 +2,30 @@
 Migration
 =========
 
-Some things to note:
+The :mod:`laser.core.migration` submodule provides four spatial-interaction
+models — gravity, competing-destinations, Stouffer, and radiation — plus the
+supporting Haversine :func:`~laser.core.migration.distance` helper and the
+:func:`~laser.core.migration.row_normalizer` / :func:`~laser.core.migration.build_network`
+composition utilities. Each model takes a 1D vector of node populations and
+a 2D pairwise distance matrix and returns a 2D migration network: entry
+``M[i, j]`` is the flow (or per-capita rate, or flux — see below) from node
+``i`` to node ``j``, with the diagonal zeroed.
 
-These models all take in some parameters, along with a vector of populations and distances between nodes, and spit out a matrix defining the connection between nodes.
+.. note::
+   **Interpreting the output units.** A migration matrix can be read as a
+   *per-capita rate of travel* from :math:`i` to :math:`j` or as a *total
+   flux of people*. If your model has a term that scales like
+   :math:`p_i^a`, using a per-capita rate effectively shifts the exponent
+   by :math:`+1`. Similarly, if local mixing / infectivity is normalized to
+   local population downstream of the matrix, the destination exponent
+   :math:`b` becomes :math:`b-1` in effective behavior. These are
+   calibratable away in practice but worth keeping in mind when comparing
+   against other models or published parameter values.
 
-- When comparing to other models, it's important to consider how implementation of the migration / connection model affects interpretation of the parameters.  For example, a migration matrix could be implemented as a per-capita rate of travel from :math:`i` to :math:`j`, or as a total flux of people from :math:`i` to :math:`j`.  If your migration model has a term that scales like :math:`p_i^a`, using a per-capita rate introduces an implicit :math:`+1` into the exponent.  Or, depending on how infectivity / mixing is handled locally, if the introduced infectivity is normalized to local population, that might introduce an ambiguity in interpreting the exponent on the destination population, is it :math:`b` or :math:`b-1`, effectively?  In the end, these are terms that could be calibrated away, but useful to keep this in mind for interpretation and comparison against other models - we aim to support users defining their own migration models and implementations, and this sort of ambiguity is important to keep in mind.
-
-- I'm aiming to do most of this with element-by-element numpy functions when I can, though loops would probably translate more obviously to numba/c.  I don't expect that computation of these matrices will be a substantial part of overall computational spend on a model either way.
-
-- I have not tested nor written code to enforce conditions on the inputs.  This should be done - e.g., populations coming in as integers can present wrapping issues when we start exponentiating and multiplying them (signed integers in particular can be a problem because you may wrap into negative numbers).  So some input checking and such needs to be done.
-
-- It's also worth investigating whether using large floats makes sense when computing these formulas, or whether we should put operations in a specific order.  This is because depending on the choice of someone's metapop network and spatial model parameters, and the order of computations, we can end up multiplying, dividing, summing over numbers that can be across really different scales, so weirdness might happen with loss of precision?  The integer issue above is more concerning and one that I have run into in the past.
-
-- Distances on the diagonal of the distance matrix should always be 0.  We should check for 0s elsewhere and throw an error.  It's also nice to be able to use numpy element-by-element math without constant div-by-zero errors for the diagonal elements, so maybe each function should start by adding epsilon to the diagonal of the distance matrix?  We're going to zero out those terms in the network anyway...
+Historical developer notes from the original implementation (vectorization
+vs. loops, input-validation TODOs, numerical-precision concerns, zero-distance
+handling) have been moved to ``notes.md`` now that the corresponding
+implementation work has landed.
 
 .. _choosing-a-model:
 

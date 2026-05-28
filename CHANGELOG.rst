@@ -4,6 +4,31 @@ Changelog
 Unreleased
 ----------
 
+* Add a derivation comment for the ``safety_multiplier`` heuristic in
+  ``laser.core.utils.calc_capacity``: documents the GBM-headroom rationale,
+  explains the ``sqrt(exp_mu_t) - 1`` scaling as a relative-deviation buffer
+  whose magnitude is controlled by ``safety_factor`` (≈ number of "sigmas" of
+  headroom), and flags the heuristic as a sizing tool rather than a
+  calibrated statistical bound.
+* Replace the developer-facing TODO-style preamble at the top of
+  ``docs/migration.rst`` with a polished one-paragraph overview of the
+  migration submodule and a single "Interpreting the output units" note (the
+  user-relevant bullet from the prior preamble). Historical implementation
+  notes (vectorization status, validation status, precision concerns,
+  zero-distance handling) moved to ``notes.md`` with their current resolution
+  status.
+* Rewrite the ``PropertySet`` class docstring in Google / Markdown style
+  consistent with the rest of the codebase: dropped the RST ``::`` blocks,
+  added a `+= / <<= / |=` operator-semantics table, an ``Args`` /
+  ``Raises`` block for the constructor, and three consolidated
+  ``**Example**`` blocks (basic access, composition, save/load).
+* Promote the migration-model extension story in ``docs/architecture.rst``
+  from a worked example to a formally-specified protocol section: documents
+  the ``model(pops, distances, **params) -> np.ndarray`` signature, the
+  inputs / outputs / error-semantics contract, and the use of the shared
+  ``laser.core._validation`` helpers. Updated the ``exponential_decay``
+  worked example to follow the protocol explicitly (full input validation,
+  return-shape guarantee, integration with ``build_network``).
 * Fix stale ``distributions`` API references that pre-dated the factory + ``sample_floats``/``sample_ints`` pattern:
 
   - ``docs/usage.rst`` "Sampling from a distribution" snippet now shows the

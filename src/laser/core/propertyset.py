@@ -6,82 +6,54 @@ from typing import Union
 
 
 class PropertySet:
-    """A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
+    """Dictionary-like parameter bag with attribute access and composable merge operators.
 
-    Examples
-    --------
-    Basic Initialization:
+    `PropertySet` is the canonical way to bundle model parameters in LASER. Properties
+    can be read and written both as attributes (`ps.beta`) and as items (`ps["beta"]`),
+    and multiple `PropertySet`s compose via three operators with different
+    add-vs-override semantics:
 
-    ::
+    | Operator | Behavior | Raises on key conflict |
+    | --- | --- | --- |
+    | `+= other` | Add new keys only | `ValueError` if `other` contains a key already in `self` |
+    | `<<= other` | Override existing keys only | `ValueError` if `other` contains a key not in `self` |
+    | `\\|= other` | Add or override (union-like) | Never |
+
+    The `+`, `<<`, `\\|` non-mutating variants return a new `PropertySet` rather than
+    modifying the left-hand side.
+
+    Args (constructor):
+        *bags (PropertySet | list | tuple | dict): One or more sources of `(key, value)`
+            pairs used to seed the set. Keys must be strings; values can be any type.
+            Multiple bags are merged left-to-right with later values winning on conflict.
+
+    Raises:
+        TypeError: If a `bag` is not one of the supported types.
+        ValueError: If a key conflict is detected by `+=` or `<<=`.
+
+    **Example** — basic construction, attribute and item access:
 
         from laser.core import PropertySet
-        ps = PropertySet()
-        ps['infection_status'] = 'infected'
-        ps['age'] = 35
-        print(ps.infection_status)  # Outputs: 'infected'
-        print(ps['age'])            # Outputs: 35
 
-    Combining two PropertySets:
+        ps = PropertySet({"mything": 0.4, "that_other_thing": 42})
+        ps["status"] = "susceptible"
+        print(ps.mything)         # 0.4
+        print(ps["status"])       # 'susceptible'
+        print(len(ps))            # 3
+        print(ps.to_dict())       # {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible'}
 
-    ::
+    **Example** — composing parameter sets:
 
-        ps1 = PropertySet({'immunity': 'high', 'region': 'north'})
-        ps2 = PropertySet({'infectivity': 0.7})
-        combined_ps = ps1 + ps2
-        print(combined_ps.to_dict())
-        # Outputs: {'immunity': 'high', 'region': 'north', 'infectivity': 0.7}
+        base = PropertySet({"immunity": "high", "region": "north"})
+        extras = PropertySet({"infectivity": 0.7})
+        combined = base + extras            # new PropertySet, base unchanged
+        base |= {"new_timer": 10}           # in-place union (add-or-override)
+        base <<= {"region": "south"}        # in-place override; key must already exist
 
-    Creating a PropertySet from a dictionary:
+    **Example** — save and load:
 
-    ::
-
-        ps = PropertySet({'mything': 0.4, 'that_other_thing': 42})
-        print(ps.mything)            # Outputs: 0.4
-        print(ps.that_other_thing)   # Outputs: 42
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42}
-
-    Save and load:
-
-    ::
-
-        ps.save('properties.json')
-        loaded_ps = PropertySet.load('properties.json')
-        print(loaded_ps.to_dict())  # Outputs the saved properties
-
-    Property access and length:
-
-    ::
-
-        ps['status'] = 'susceptible'
-        ps['exposure_timer'] = 5
-        print(ps['status'])          # Outputs: 'susceptible'
-        print(len(ps))               # Outputs: 4
-
-    In-Place addition (added keys must *not* exist in the destination PropertySet):
-
-    ::
-
-        ps += {'new_timer': 10, 'susceptibility': 0.75}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 5, 'new_timer': 10, 'susceptibility': 0.75}
-
-    In-place update (keys *must* already exist in the destination PropertySet):
-
-    ::
-
-        ps <<= {'exposure_timer': 10, 'infectivity': 0.8}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 10, 'infectivity': 0.8}
-
-    In-place addition or update (no restriction on incoming keys):
-
-    ::
-
-        ps |= {'new_timer': 10, 'exposure_timer': 8}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
-
+        ps.save("properties.json")
+        ps2 = PropertySet.load("properties.json")
     """
 
     def __init__(self, *bags: Union["PropertySet", list, tuple, dict]):

@@ -286,20 +286,76 @@ existing operators continue to work:
     pars |= {"seed": 20260514}   # composition still works
     pars.validate()
 
+.. _migration-model-protocol:
+
 Adding a custom migration model
 -------------------------------
 
-The migration models in :mod:`laser.core.migration` are plain functions that
-take ``(pops, distances, ...)`` and return a 2-D network. There is no plugin
-registry — to add a model, just write a function with the same signature, and
-optionally re-use the shared validation helpers in
-:mod:`laser.core._validation` (package-private but stable for the package's
-own code) or the public sanity-check pattern in :func:`laser.core.migration.gravity`.
+Migration models in :mod:`laser.core.migration` are plain functions following a
+single duck-typed protocol; there is no plugin registry, abstract base class, or
+inheritance hierarchy. A user-defined model that conforms to the protocol below
+works as a first-class peer of the built-ins — including with
+:func:`~laser.core.migration.build_network` for composition with
+:func:`~laser.core.migration.row_normalizer`.
+
+The migration-model protocol
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A migration model is any callable with the signature::
+
+    model(pops, distances, **params) -> np.ndarray
+
+and the following input / output contract:
+
+**Inputs**
+
+- ``pops`` (``np.ndarray``): 1-D non-negative numeric array of length ``N``
+  (one entry per node). Models must internally promote to ``float64`` before
+  exponentiation to avoid integer-overflow issues; the built-ins do this via
+  ``pops.astype(np.float64)``.
+- ``distances`` (``np.ndarray``): 2-D symmetric numeric array of shape
+  ``(N, N)``. The diagonal must be ``0`` (distance to self). Off-diagonal
+  entries must be strictly positive — zero off-diagonal distances are not
+  supported and will produce ``inf`` / ``NaN`` in models that include a
+  ``distance ** -c`` term.
+- ``**params``: model-specific scalar parameters (``k``, ``a``, ``b``, ``c``,
+  ``delta``, ``include_home``, etc.). Conventionally numeric, validated at the
+  top of the function with the shared
+  :mod:`laser.core._validation` helpers (`_is_instance`, `_has_values`, …) or
+  with explicit `ValueError` / `TypeError` raises. **Do not** use bare
+  ``assert`` — it is suppressed under ``python -O``.
+
+**Output**
+
+- A 2-D ``np.ndarray`` of shape ``(N, N)`` and dtype ``float64`` representing
+  the migration network. Entry ``M[i, j]`` is the flow (or per-capita rate,
+  or flux — see the "Interpreting the output units" note in
+  :doc:`migration`) from node ``i`` to node ``j``. The diagonal must be ``0``
+  (no self-loops).
+
+**Error semantics**
+
+- Raise ``TypeError`` for shape / dtype / instance-type mismatches.
+- Raise ``ValueError`` for negative populations, asymmetric distance matrices,
+  out-of-domain parameter values, etc.
+- Numerical edge cases (e.g. ``mysums[j] - 0`` in a power expression) should
+  be handled either by the validator or by explicit promotion / clipping in
+  the body of the model — see the existing models for examples.
+
+**Optional**
+
+- A model may accept additional keyword arguments without using them
+  (``**params`` swallows them); this is how built-ins remain compatible with
+  the generic ``build_network`` call site.
+
+Worked example
+^^^^^^^^^^^^^^
 
 .. code-block:: python
 
     import numpy as np
     from laser.core import migration
+    from laser.core._validation import _has_dimensions, _has_values, _is_dtype, _is_instance
 
     def exponential_decay(pops, distances, k, scale, **_):
         """A custom migration model: flows decay exponentially with distance.
@@ -307,8 +363,16 @@ own code) or the public sanity-check pattern in :func:`laser.core.migration.grav
         network[i, j] = k * pops[j] * exp(-distance[i, j] / scale), with zero diagonal.
         """
         # Use the same boundary-validation pattern as the built-in models.
-        if not isinstance(distances, np.ndarray) or distances.ndim != 2:
-            raise TypeError("distances must be a 2D NumPy array")
+        _is_instance(pops, np.ndarray, "pops must be a NumPy array")
+        _is_dtype(pops, np.number, "pops must be a numeric array")
+        _has_values(pops >= 0, "pops must contain only non-negative values")
+        _is_instance(distances, np.ndarray, "distances must be a NumPy array")
+        _has_dimensions(distances, 2, "distances must be a 2D array")
+        _has_values(distances == distances.T, "distances must be symmetric")
+        if not (isinstance(k, (int, float)) and k >= 0):
+            raise ValueError(f"k must be a non-negative number (got {k!r})")
+        if not (isinstance(scale, (int, float)) and scale > 0):
+            raise ValueError(f"scale must be a positive number (got {scale!r})")
 
         pops = pops.astype(np.float64)
         distances = distances.astype(np.float64)
@@ -316,13 +380,13 @@ own code) or the public sanity-check pattern in :func:`laser.core.migration.grav
         np.fill_diagonal(network, 0)
         return network
 
-    # Plug it in just like one of the built-ins — either two-step:
+    # Use it like a built-in — either as a two-step chain:
     net = exponential_decay(pops, distances, k=0.01, scale=100.0)
     net = migration.row_normalizer(net, max_rowsum=0.05)
 
-    # ...or compose the same two steps in one call via build_network. Because
-    # build_network only requires a (pops, distances, **params) signature, it
-    # works with any user-defined model that follows the built-in convention.
+    # ...or compose model + normalize in one call via build_network. Because
+    # build_network only requires the `(pops, distances, **params)` signature
+    # above, it works with any user-defined model that follows the protocol.
     net = migration.build_network(
         exponential_decay, pops, distances, max_rowsum=0.05, k=0.01, scale=100.0,
     )

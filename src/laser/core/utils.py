@@ -67,6 +67,24 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     # For 0 <= CBR <= 40, difference is negligible (< 1:1e6)
     exp_mu_t = np.exp(lamda.sum(axis=0))
 
+    # Heuristic capacity headroom on top of the expected GBM growth `exp_mu_t`.
+    # The intent is "size capacity for the expected end-state plus a buffer that
+    # scales with how much growth has actually happened" — when `exp_mu_t == 1`
+    # (no growth) no extra capacity is needed; when `exp_mu_t` is large, a
+    # `safety_factor` multiple of the per-step square-root excess is added.
+    #
+    # Why `sqrt(exp_mu_t) - 1`?  Under GBM with diffusion the population
+    # *standard deviation* grows like `sqrt(t)` and is bounded above by
+    # `sqrt(exp_mu_t) - 1` to leading order — so the term has the right units
+    # (a relative deviation) and the right asymptotic shape to absorb
+    # stochastic overshoot. `safety_factor` then sets how many "sigmas" of
+    # headroom to allocate: 1.0 ≈ 1σ, 2.0 ≈ 2σ, etc.
+    #
+    # This is a deliberately conservative, simulation-engineering heuristic
+    # rather than a tight statistical bound; the original derivation lives in
+    # the LASER team's capacity-planning notes (see commit history for
+    # `calc_capacity` introduction). If your model needs a calibrated bound,
+    # supersede this with a model-specific sizing pass and skip this function.
     safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
     estimates = np.round(initial_pop * safety_multiplier * exp_mu_t).astype(np.int32)
 
