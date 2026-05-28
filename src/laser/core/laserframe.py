@@ -242,7 +242,7 @@ class LaserFrame:
         """
         Adds the specified count to the current count of the LaserFrame.
 
-        This method increments the internal count by the given count, ensuring that the total does not exceed the frame's capacity. If the addition would exceed the capacity, an assertion error is raised. This method is typically used to add new births during the simulation.
+        This method increments the internal count by the given count, ensuring that the total does not exceed the frame's capacity. If the addition would exceed the capacity, a `ValueError` is raised. This method is typically used to add new births during the simulation.
 
         Parameters:
             count (int): The number to add to the current count.
@@ -251,7 +251,7 @@ class LaserFrame:
             tuple[int, int]: A tuple containing the [start index, end index) after the addition.
 
         Raises:
-            AssertionError: If the resulting count exceeds the frame's capacity.
+            ValueError: If the resulting count exceeds the frame's capacity.
         """
 
         if not self._count + count <= self._capacity:
@@ -274,7 +274,7 @@ class LaserFrame:
             verbose (bool, optional): If True, prints the sorting progress for each numpy array attribute. Defaults to False.
 
         Raises:
-            AssertionError: If `indices` is not an integer array or if its length does not match the frame count of active elements.
+            TypeError: If `indices` is not a NumPy integer array or if its length does not match the frame count of active elements.
         """
 
         _is_instance(indices, np.ndarray, f"Indices must be a numpy array (got {type(indices)})")
@@ -303,7 +303,7 @@ class LaserFrame:
             verbose (bool, optional): If True, prints detailed information about the squashing process. Defaults to False.
 
         Raises:
-            AssertionError: If `indices` is not a boolean array or if its length does not match the current frame active element count.
+            TypeError: If `indices` is not a NumPy boolean array or if its length does not match the current frame active element count.
 
         Returns:
             None

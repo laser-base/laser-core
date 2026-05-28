@@ -69,14 +69,28 @@ parameters that composes with ``+=``, ``<<=``, and ``|=``::
 Sampling from a distribution
 ============================
 
-Use the Numba-accelerated samplers in :mod:`laser.core.distributions`::
+:mod:`laser.core.distributions` exposes Numba-compatible distribution
+*factories*: call one with the distribution's parameters to build a sampler,
+then either invoke it once per agent or fill an array in bulk with
+:func:`~laser.core.distributions.sample_floats` /
+:func:`~laser.core.distributions.sample_ints` (or the
+:func:`~laser.core.distributions.sample` one-liner)::
 
-    from laser.core import distributions, random
+    import numpy as np
+    from laser.core import distributions as dist
 
-    rng = random.prng()
-    n = 1000
-    out = np.empty(n, dtype=np.float32)
-    distributions.poisson(rng, lam=3.0, out=out)
+    # Pattern 1 — build the sampler, then fill a pre-allocated buffer.
+    poisson_sampler = dist.poisson(lam=3.0)
+    out = np.empty(1000, dtype=np.int32)
+    dist.sample_ints(poisson_sampler, out)
+
+    # Pattern 2 — one-liner: factory + sampling in a single call. `sample`
+    # forwards `**factory_kwargs` to the factory, allocates the output buffer,
+    # and dispatches to `sample_ints`/`sample_floats` based on dtype.
+    out = dist.sample(dist.poisson, n=1000, lam=3.0)
+
+    # The same call shape works for any of the distribution factories:
+    out = dist.sample(dist.normal, n=1000, loc=0.0, scale=1.0)
 
 Building a migration network
 ============================

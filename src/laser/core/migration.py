@@ -503,6 +503,11 @@ def distance(lat1, lon1, lat2=None, lon2=None):
     dlon = lon2[np.newaxis, :] - lon1_col
     a = np.sin(dlat / 2) ** 2 + np.cos(lat1_col) * np.cos(lat2)[np.newaxis, :] * np.sin(dlon / 2) ** 2
     d = 2 * np.arcsin(np.sqrt(a))
+    # IUGG mean Earth radius R_1 = (2 a + b) / 3 ≈ 6371.0088 km (a = WGS84 equatorial
+    # radius 6378.137 km, b = polar radius 6356.752 km). Rounded to 6371.0 km here
+    # because the Haversine formula already assumes a spherical Earth, so the extra
+    # precision in R_1 is dominated by the spherical-Earth approximation itself.
+    # Reference: Moritz, H. (2000), "Geodetic Reference System 1980", J. Geodesy 74(1).
     RE = 6371.0  # Earth radius in km
     d *= RE
 

@@ -4,6 +4,31 @@ Changelog
 Unreleased
 ----------
 
+* Fix stale ``distributions`` API references that pre-dated the factory + ``sample_floats``/``sample_ints`` pattern:
+
+  - ``docs/usage.rst`` "Sampling from a distribution" snippet now shows the
+    actual factory pattern and the new ``distributions.sample`` one-liner.
+  - ``benchmarks/test_distributions_benchmarks.py`` rewritten to call the
+    real API (``constant_float`` / ``uniform(low, high)`` / ``poisson(lam)``
+    factories + ``sample_floats``/``sample_ints``). Verified end-to-end via
+    ``pytest --benchmark-only``.
+* Update ``LaserFrame.add``, ``LaserFrame.sort``, and ``LaserFrame.squash``
+  ``Raises:`` docstrings: previously listed ``AssertionError`` but the
+  implementations raise ``ValueError`` (for capacity overflow) and ``TypeError``
+  (for type/shape mismatches via ``laser.core._validation``).
+* Flesh out the ``SortedQueue`` class docstring with an overview, an
+  ``Attributes:`` block (``indices`` / ``values`` / ``size``), a ``Raises:``
+  section for capacity / empty-pop conditions, and a runnable ``**Example**``.
+* Refresh the per-folder ``README.md`` files under ``src/laser/core/`` and
+  ``src/laser/core/demographics/`` to reflect the current public surface:
+  ``build_network``, the ``sample`` one-liner, the composition helpers
+  (``mixture2`` / ``tick_modulated`` / ``node_modulated``), and the
+  reworked ``distribute_population_skewed`` signature.
+* Add a citation for the ``RE = 6371.0`` Earth-radius constant in the
+  Haversine path of ``laser.core.migration.distance`` (IUGG mean Earth
+  radius :math:`R_1 \\approx 6371.0088` km; Moritz, H. (2000), *J. Geodesy*
+  74(1)); rounding to 6371.0 km is dominated by the spherical-Earth
+  approximation already baked into the Haversine formula.
 * Add ``laser.core.distributions.sample(fn_or_factory, n, *, dtype=None,
   tick=0, node=0, out=None, **factory_kwargs)`` — a one-liner sampler that
   allocates the output buffer and dispatches to ``sample_floats`` or
