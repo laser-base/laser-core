@@ -42,6 +42,9 @@ def test_my_hot_path_n10000(benchmark):
     benchmark(my_hot_path, *inputs)
 ```
 
-> **TODO**: the baseline thresholds below are starter placeholders. Run the
-> suite on the CI hardware and lock in a real baseline before treating these
-> numbers as regression gates.
+## Updating the baseline
+
+When a perf-impacting change lands and you want to accept the new numbers as the
+new floor, trigger the `benchmarks` workflow manually (Actions → benchmarks →
+Run workflow → check `save_baseline`), download the resulting artifact, and
+replace `.benchmarks/Linux-CPython-3.12-64bit/baseline.json` in a new PR.

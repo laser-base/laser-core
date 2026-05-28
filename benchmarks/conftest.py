@@ -34,6 +34,10 @@ def medium_spatial(rng):
 
 
 def pytest_benchmark_update_machine_info(config, machine_info):
+    print()  # put a newline into the output before the benchmark report, so that the machine info is more visible
+    print("=" * 80)
+    print(f"{machine_info=}")
+    print("=" * 80)
     machine_info.clear()
     machine_info.update(
         {
