@@ -31,3 +31,13 @@ def medium_spatial(rng):
     pops = rng.integers(1_000, 100_000, size=1_000).astype(np.float64)
     coords = rng.uniform(-90, 90, size=(1_000, 2))
     return pops, coords
+
+
+def pytest_benchmark_update_machine_info(config, machine_info):
+    machine_info.clear()
+    machine_info.update(
+        {
+            "ci": "github-actions",
+            "runner": "ubuntu-latest",
+        }
+    )

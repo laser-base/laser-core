@@ -29,16 +29,20 @@ jobs:
     timeout-minutes: 20
     continue-on-error: true  # TODO: remove once baselines and thresholds are locked in
     steps:
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
+
       - name: install package and benchmark deps
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]" pytest-benchmark
+
       - name: run benchmarks
         run: |
           EXTRA_ARGS=""
@@ -53,6 +57,7 @@ jobs:
             --benchmark-min-rounds=5 \
             --benchmark-json=benchmark-results.json \
             $EXTRA_ARGS
+
       - name: upload .benchmarks/ for baseline capture
         if: github.event.inputs.save_baseline == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -60,9 +65,9 @@ jobs:
           name: pytest-benchmark-baseline
           path: .benchmarks/Linux-CPython-3.12-64bit/
           retention-days: 90
-      # TODO: once baselines are committed, replace the upload step with a compare step:
-      # - name: compare against committed baseline
-      #   run: |
-      #     pytest benchmarks/ --benchmark-only \
-      #       --benchmark-compare=.benchmarks/Linux-CPython-3.12-64bit/main \
-      #       --benchmark-compare-fail=min:25%
+
+      - name: compare against committed baseline
+        run: |
+          pytest benchmarks/ --benchmark-only \
+            --benchmark-compare=.benchmarks/Linux-CPython-3.12-64bit/baseline.json \
+            --benchmark-compare-fail=min:25%
