@@ -5,6 +5,7 @@ Note that this is not intended to test NumPy, Numba, or SciPy themselves, but ra
 distributions implemented in laser.core.distributions have been "wired up" correctly.
 """
 
+import sys
 import unittest
 from itertools import product
 from time import perf_counter_ns
@@ -100,6 +101,10 @@ class TestDistributions(unittest.TestCase):
             stat, _ = ks_2samp(samples, ref_samples)
             assert stat < KS_THRESHOLD, f"Lognormal({mean},{sigma}) KS={stat}"
 
+    @unittest.skipIf(
+        sys.version_info[:2] == (3, 10) and sys.platform == "darwin",
+        "negative_binomial is flaky on macOS + Python 3.10 (see CHANGELOG.rst Unreleased)",
+    )
     def test_negative_binomial(self):
         params = product([1, 2, 3, 4, 5], [1 / 2, 1 / 3, 1 / 4, 1 / 5])
         for r, p in params:

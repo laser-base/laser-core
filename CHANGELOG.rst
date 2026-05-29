@@ -4,6 +4,23 @@ Changelog
 Unreleased
 ----------
 
+* Add ``benchmarks/local_compare.py`` — a local benchmark comparison tool
+  that uses a git worktree to run the ``pytest-benchmark`` suite against a
+  baseline ref (default ``main``) and then against HEAD on the same
+  workstation, then prints a side-by-side comparison and optionally enforces
+  a regression threshold. Designed to replace CI-based comparison for this
+  project: GitHub Actions runner variance (30–50%) is well above any useful
+  per-PR regression threshold, while back-to-back local runs cancel out
+  hardware variance and let a tight threshold (e.g. ``min:15%``) be
+  meaningful. The script copies the current branch's ``benchmarks/`` tree
+  into the worktree so newly-added cases are still measured against the
+  baseline, uses ``PYTHONPATH`` injection to point ``laser.core`` at the
+  worktree source while the venv supplies all other deps, and cleans up the
+  worktree on exit unless ``--keep-worktree`` is passed. Update
+  ``benchmarks/README.md`` to document the new workflow. The advisory CI
+  workflow at ``.github/workflows/benchmarks.yml`` is left in place
+  (``continue-on-error: true``) and intentionally is **not** a regression
+  gate.
 * Add a derivation comment for the ``safety_multiplier`` heuristic in
   ``laser.core.utils.calc_capacity``: documents the GBM-headroom rationale,
   explains the ``sqrt(exp_mu_t) - 1`` scaling as a relative-deviation buffer
