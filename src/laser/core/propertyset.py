@@ -60,7 +60,7 @@ class PropertySet:
         """
         Initialize a PropertySet to manage properties in a dictionary-like structure.
 
-        Parameters:
+        Args:
             bags: A sequence of key-value pairs (e.g., lists, tuples, dictionaries) to initialize the PropertySet. Keys must be strings, and values can be any type.
         """
 
@@ -81,7 +81,23 @@ class PropertySet:
                 setattr(self, key, value)
 
     def to_dict(self):
-        """Convert the PropertySet to a dictionary."""
+        """Convert the PropertySet to a plain `dict` snapshot.
+
+        Recursively unwraps any nested PropertySets so the returned dict contains only
+        Python builtins. Useful for JSON serialization, logging, or interop with
+        libraries that expect a plain mapping.
+
+        Returns:
+            dict: A new dict mapping each attribute name to its value (or, for nested
+                PropertySets, the recursively-unwrapped dict). The original PropertySet
+                is not modified.
+
+        **Example**:
+
+            from laser.core import PropertySet
+            ps = PropertySet({"beta": 0.4, "subset": PropertySet({"gamma": 0.1})})
+            ps.to_dict()  # {'beta': 0.4, 'subset': {'gamma': 0.1}}
+        """
         result = {}
 
         for key, value in self.__dict__.items():
@@ -93,11 +109,29 @@ class PropertySet:
         return result
 
     def save(self, filename):
-        """
-        Save the PropertySet to a specified file.
+        """Serialize the PropertySet to a file as JSON-formatted text.
 
-        Parameters:
-            filename (str): The path to the file where the PropertySet will be saved.
+        Writes the result of ``str(self)`` (i.e. the JSON encoding produced by
+        [`__str__`][laser.core.PropertySet.__str__]) to the given path, overwriting any
+        existing file. Round-trips with [`load`][laser.core.PropertySet.load].
+
+        Args:
+            filename (str | Path): Path to the destination file. Parent directories must
+                already exist.
+
+        Returns:
+            None: The file is written as a side effect.
+
+        Raises:
+            OSError: Propagated from `pathlib.Path.open` (or the underlying write) if the
+                file cannot be opened or written.
+
+        **Example**:
+
+            from laser.core import PropertySet
+            ps = PropertySet({"beta": 0.4, "gamma": 0.1})
+            ps.save("params.json")
+            ps2 = PropertySet.load("params.json")
         """
         file = Path(filename)
         with file.open("w") as file:
@@ -109,7 +143,7 @@ class PropertySet:
         """
         Retrieve the attribute of the object with the given key (e.g., ``ps[key]``).
 
-        Parameters:
+        Args:
             key (str): The name of the attribute to retrieve.
 
         Returns:
@@ -127,7 +161,7 @@ class PropertySet:
         This method allows setting an attribute of the instance using the
         dictionary-like syntax (e.g., ``ps[key] = value``).
 
-        Parameters:
+        Args:
             key (str): The name of the attribute to set.
             value (any): The value to set for the attribute.
         """
@@ -140,7 +174,7 @@ class PropertySet:
 
         This method allows the use of the ``+`` operator to combine two PropertySet instances.
 
-        Parameters:
+        Args:
             other (PropertySet): The other PropertySet instance to add.
 
         Returns:
@@ -159,7 +193,7 @@ class PropertySet:
         `other` is a dictionary, its key-value pairs are added as attributes to
         the current instance.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary to add to the current instance.
 
         Returns:
@@ -183,7 +217,7 @@ class PropertySet:
         """
         Implements the ``<<`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
@@ -203,7 +237,7 @@ class PropertySet:
         """
         Implements the ``<<=`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
@@ -227,7 +261,7 @@ class PropertySet:
         """
         Implements the ``|`` operator on PropertySet to add new or override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
@@ -246,7 +280,7 @@ class PropertySet:
         """
         Implements the ``|=`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
@@ -308,7 +342,7 @@ class PropertySet:
         """
         Check if a key is in the property set.
 
-        Parameters:
+        Args:
             key (str): The key to check for existence in the property set.
 
         Returns:
@@ -321,7 +355,7 @@ class PropertySet:
         """
         Check if two PropertySet instances are equal.
 
-        Parameters:
+        Args:
             other (PropertySet): The other PropertySet instance to compare.
 
         Returns:
@@ -335,7 +369,7 @@ class PropertySet:
         """
         Load a PropertySet from a specified file.
 
-        Parameters:
+        Args:
             filename (str): The path to the file where the PropertySet is saved.
 
         Returns:

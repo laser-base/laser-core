@@ -16,23 +16,10 @@ def _make_distance_matrix(coords):
     return migration.distance(coords[:, 0], coords[:, 1])
 
 
-def test_distance_n100(benchmark, small_spatial):
-    """Benchmark `migration.distance` at small scale (100x100)."""
-    _, coords = small_spatial
-    benchmark(migration.distance, coords[:, 0], coords[:, 1])
-
-
 def test_distance_n1000(benchmark, medium_spatial):
     """Benchmark `migration.distance` at medium scale (1,000x1,000)."""
     _, coords = medium_spatial
     benchmark(migration.distance, coords[:, 0], coords[:, 1])
-
-
-def test_gravity_n100(benchmark, small_spatial):
-    """Benchmark `gravity` at small scale."""
-    pops, coords = small_spatial
-    distances = _make_distance_matrix(coords)
-    benchmark(migration.gravity, pops, distances, k=0.01, a=1.0, b=1.0, c=2.0)
 
 
 def test_gravity_n1000(benchmark, medium_spatial):

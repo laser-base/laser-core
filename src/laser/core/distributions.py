@@ -263,16 +263,6 @@ def lognormal(mean, sigma):
     return _lognormal
 
 
-# # multinomial(n, pvals, size=None)
-# @lru_cache
-# def multinomial(n, pvals):
-#     @nb.njit(nogil=True)
-#     def _multinomial():
-#         return np.int32(np.random.multinomial(n, pvals))
-#
-#     return _multinomial
-
-
 # negative_binomial(n, p, size=None)
 @lru_cache
 def negative_binomial(n, p):
