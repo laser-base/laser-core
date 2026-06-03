@@ -6,89 +6,61 @@ from typing import Union
 
 
 class PropertySet:
-    """A class that can be used to store properties in a dictionary-like object with `.property` access to properties.
+    """Dictionary-like parameter bag with attribute access and composable merge operators.
 
-    Examples
-    --------
-    Basic Initialization:
+    `PropertySet` is the canonical way to bundle model parameters in LASER. Properties
+    can be read and written both as attributes (`ps.beta`) and as items (`ps["beta"]`),
+    and multiple `PropertySet`s compose via three operators with different
+    add-vs-override semantics:
 
-    ::
+    | Operator | Behavior | Raises on key conflict |
+    | --- | --- | --- |
+    | `+= other` | Add new keys only | `ValueError` if `other` contains a key already in `self` |
+    | `<<= other` | Override existing keys only | `ValueError` if `other` contains a key not in `self` |
+    | `\\|= other` | Add or override (union-like) | Never |
+
+    The `+`, `<<`, `\\|` non-mutating variants return a new `PropertySet` rather than
+    modifying the left-hand side.
+
+    Args (constructor):
+        *bags (PropertySet | list | tuple | dict): One or more sources of `(key, value)`
+            pairs used to seed the set. Keys must be strings; values can be any type.
+            Multiple bags are merged left-to-right with later values winning on conflict.
+
+    Raises:
+        TypeError: If a `bag` is not one of the supported types.
+        ValueError: If a key conflict is detected by `+=` or `<<=`.
+
+    **Example** — basic construction, attribute and item access:
 
         from laser.core import PropertySet
-        ps = PropertySet()
-        ps['infection_status'] = 'infected'
-        ps['age'] = 35
-        print(ps.infection_status)  # Outputs: 'infected'
-        print(ps['age'])            # Outputs: 35
 
-    Combining two PropertySets:
+        ps = PropertySet({"mything": 0.4, "that_other_thing": 42})
+        ps["status"] = "susceptible"
+        print(ps.mything)         # 0.4
+        print(ps["status"])       # 'susceptible'
+        print(len(ps))            # 3
+        print(ps.to_dict())       # {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible'}
 
-    ::
+    **Example** — composing parameter sets:
 
-        ps1 = PropertySet({'immunity': 'high', 'region': 'north'})
-        ps2 = PropertySet({'infectivity': 0.7})
-        combined_ps = ps1 + ps2
-        print(combined_ps.to_dict())
-        # Outputs: {'immunity': 'high', 'region': 'north', 'infectivity': 0.7}
+        base = PropertySet({"immunity": "high", "region": "north"})
+        extras = PropertySet({"infectivity": 0.7})
+        combined = base + extras            # new PropertySet, base unchanged
+        base |= {"new_timer": 10}           # in-place union (add-or-override)
+        base <<= {"region": "south"}        # in-place override; key must already exist
 
-    Creating a PropertySet from a dictionary:
+    **Example** — save and load:
 
-    ::
-
-        ps = PropertySet({'mything': 0.4, 'that_other_thing': 42})
-        print(ps.mything)            # Outputs: 0.4
-        print(ps.that_other_thing)   # Outputs: 42
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42}
-
-    Save and load:
-
-    ::
-
-        ps.save('properties.json')
-        loaded_ps = PropertySet.load('properties.json')
-        print(loaded_ps.to_dict())  # Outputs the saved properties
-
-    Property access and length:
-
-    ::
-
-        ps['status'] = 'susceptible'
-        ps['exposure_timer'] = 5
-        print(ps['status'])          # Outputs: 'susceptible'
-        print(len(ps))               # Outputs: 4
-
-    In-Place addition (added keys must *not* exist in the destination PropertySet):
-
-    ::
-
-        ps += {'new_timer': 10, 'susceptibility': 0.75}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 5, 'new_timer': 10, 'susceptibility': 0.75}
-
-    In-place update (keys *must* already exist in the destination PropertySet):
-
-    ::
-
-        ps <<= {'exposure_timer': 10, 'infectivity': 0.8}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 10, 'infectivity': 0.8}
-
-    In-place addition or update (no restriction on incoming keys):
-
-    ::
-
-        ps |= {'new_timer': 10, 'exposure_timer': 8}
-        print(ps.to_dict())
-        # Outputs: {'mything': 0.4, 'that_other_thing': 42, 'status': 'susceptible', 'exposure_timer': 8, 'new_timer': 10}
-
+        ps.save("properties.json")
+        ps2 = PropertySet.load("properties.json")
     """
 
     def __init__(self, *bags: Union["PropertySet", list, tuple, dict]):
         """
         Initialize a PropertySet to manage properties in a dictionary-like structure.
 
-        Parameters:
+        Args:
             bags: A sequence of key-value pairs (e.g., lists, tuples, dictionaries) to initialize the PropertySet. Keys must be strings, and values can be any type.
         """
 
@@ -109,7 +81,23 @@ class PropertySet:
                 setattr(self, key, value)
 
     def to_dict(self):
-        """Convert the PropertySet to a dictionary."""
+        """Convert the PropertySet to a plain `dict` snapshot.
+
+        Recursively unwraps any nested PropertySets so the returned dict contains only
+        Python builtins. Useful for JSON serialization, logging, or interop with
+        libraries that expect a plain mapping.
+
+        Returns:
+            dict: A new dict mapping each attribute name to its value (or, for nested
+                PropertySets, the recursively-unwrapped dict). The original PropertySet
+                is not modified.
+
+        **Example**:
+
+            from laser.core import PropertySet
+            ps = PropertySet({"beta": 0.4, "subset": PropertySet({"gamma": 0.1})})
+            ps.to_dict()  # {'beta': 0.4, 'subset': {'gamma': 0.1}}
+        """
         result = {}
 
         for key, value in self.__dict__.items():
@@ -121,11 +109,29 @@ class PropertySet:
         return result
 
     def save(self, filename):
-        """
-        Save the PropertySet to a specified file.
+        """Serialize the PropertySet to a file as JSON-formatted text.
 
-        Parameters:
-            filename (str): The path to the file where the PropertySet will be saved.
+        Writes the result of ``str(self)`` (i.e. the JSON encoding produced by
+        [`__str__`][laser.core.PropertySet.__str__]) to the given path, overwriting any
+        existing file. Round-trips with [`load`][laser.core.PropertySet.load].
+
+        Args:
+            filename (str | Path): Path to the destination file. Parent directories must
+                already exist.
+
+        Returns:
+            None: The file is written as a side effect.
+
+        Raises:
+            OSError: Propagated from `pathlib.Path.open` (or the underlying write) if the
+                file cannot be opened or written.
+
+        **Example**:
+
+            from laser.core import PropertySet
+            ps = PropertySet({"beta": 0.4, "gamma": 0.1})
+            ps.save("params.json")
+            ps2 = PropertySet.load("params.json")
         """
         file = Path(filename)
         with file.open("w") as file:
@@ -137,7 +143,7 @@ class PropertySet:
         """
         Retrieve the attribute of the object with the given key (e.g., ``ps[key]``).
 
-        Parameters:
+        Args:
             key (str): The name of the attribute to retrieve.
 
         Returns:
@@ -155,7 +161,7 @@ class PropertySet:
         This method allows setting an attribute of the instance using the
         dictionary-like syntax (e.g., ``ps[key] = value``).
 
-        Parameters:
+        Args:
             key (str): The name of the attribute to set.
             value (any): The value to set for the attribute.
         """
@@ -168,7 +174,7 @@ class PropertySet:
 
         This method allows the use of the ``+`` operator to combine two PropertySet instances.
 
-        Parameters:
+        Args:
             other (PropertySet): The other PropertySet instance to add.
 
         Returns:
@@ -187,18 +193,20 @@ class PropertySet:
         `other` is a dictionary, its key-value pairs are added as attributes to
         the current instance.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary to add to the current instance.
 
         Returns:
             self (PropertySet): The updated instance with the new attributes.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys already present in the PropertySet.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if hasattr(self, key):
                 raise ValueError(f"Cannot override existing value for '{key}'.")
@@ -209,14 +217,14 @@ class PropertySet:
         """
         Implements the ``<<`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
             PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with overrides from the second PropertySet.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys not present in the PropertySet.
         """
 
@@ -229,18 +237,20 @@ class PropertySet:
         """
         Implements the ``<<=`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
             self (PropertySet): The updated instance with the overrides from other.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
             ValueError: If `other` contains keys not present in the PropertySet.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             if not hasattr(self, key):
                 raise ValueError(f"Cannot override missing key '{key}'.")
@@ -251,14 +261,14 @@ class PropertySet:
         """
         Implements the ``|`` operator on PropertySet to add new or override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
             PropertySet (PropertySet): A new PropertySet with all the values of the first PropertySet with new or overriding values from the second PropertySet.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
         """
 
         result = PropertySet(self)
@@ -270,17 +280,19 @@ class PropertySet:
         """
         Implements the ``|=`` operator on PropertySet to override existing values with new values.
 
-        Parameters:
+        Args:
             other (Union[type(self), dict]): The object or dictionary with overriding values.
 
         Returns:
             self (PropertySet): The updated instance with all the values of self with new or overriding values from other.
 
         Raises:
-            AssertionError: If `other` is neither an instance of the same class nor a dictionary.
+            TypeError: If `other` is neither an instance of the same class nor a dictionary.
         """
 
-        assert isinstance(other, type(self) | dict)
+        if not isinstance(other, type(self) | dict):
+            raise TypeError(f"other must be a {type(self).__name__} or dict (got {type(other).__name__})")
+
         for key, value in (other.__dict__ if isinstance(other, type(self)) else other).items():
             # no check on existence in self, all keys added or updated
             setattr(self, key, value)
@@ -330,7 +342,7 @@ class PropertySet:
         """
         Check if a key is in the property set.
 
-        Parameters:
+        Args:
             key (str): The key to check for existence in the property set.
 
         Returns:
@@ -343,7 +355,7 @@ class PropertySet:
         """
         Check if two PropertySet instances are equal.
 
-        Parameters:
+        Args:
             other (PropertySet): The other PropertySet instance to compare.
 
         Returns:
@@ -357,7 +369,7 @@ class PropertySet:
         """
         Load a PropertySet from a specified file.
 
-        Parameters:
+        Args:
             filename (str): The path to the file where the PropertySet is saved.
 
         Returns:

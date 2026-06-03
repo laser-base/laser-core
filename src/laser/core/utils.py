@@ -9,10 +9,13 @@ Functions:
         Create a 2D grid (numpy array) of the specified shape, filled with the given value.
 
 """
+from collections.abc import Callable
 
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
+
+from laser.core.random import prng
 
 
 def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
@@ -28,17 +31,23 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     Returns:
 
         np.ndarray: 1D array of length nnodes representing the estimated required capacity (number of agents) at each node.
+
+    Raises:
+        ValueError: If `initial_pop` length does not match the number of nodes in `birthrates`,
+            if any birthrate is negative or exceeds 100, or if `safety_factor` is outside `[0, 6]`.
     """
-    # Validate birthrates shape against initial_pop shape
+    # Validate at API boundary with exceptions (not `assert`), so checks survive `python -O`.
     _, nnodes = birthrates.shape
-    assert len(initial_pop) == nnodes, f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match"
+    if len(initial_pop) != nnodes:
+        raise ValueError(f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match")
 
-    # Validate birthrates values, must be >= 0 and <= 100
-    assert np.all(birthrates >= 0.0), "All birthrate values must be non-negative"
-    assert np.all(birthrates <= 100.0), "All birthrate values must be less than or equal to 100"
+    if not np.all(birthrates >= 0.0):
+        raise ValueError("All birthrate values must be non-negative")
+    if not np.all(birthrates <= 100.0):
+        raise ValueError("All birthrate values must be less than or equal to 100")
 
-    # Validate safety_factor
-    assert 0 <= safety_factor <= 6, f"safety_factor must be between 0 and 6, got {safety_factor}"
+    if not (0 <= safety_factor <= 6):
+        raise ValueError(f"safety_factor must be between 0 and 6, got {safety_factor}")
 
     # Convert CBR to daily growth rate
     # CBR = births per 1,000 individuals per year
@@ -58,13 +67,31 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     # For 0 <= CBR <= 40, difference is negligible (< 1:1e6)
     exp_mu_t = np.exp(lamda.sum(axis=0))
 
+    # Heuristic capacity headroom on top of the expected GBM growth `exp_mu_t`.
+    # The intent is "size capacity for the expected end-state plus a buffer that
+    # scales with how much growth has actually happened" — when `exp_mu_t == 1`
+    # (no growth) no extra capacity is needed; when `exp_mu_t` is large, a
+    # `safety_factor` multiple of the per-step square-root excess is added.
+    #
+    # Why `sqrt(exp_mu_t) - 1`?  Under GBM with diffusion the population
+    # *standard deviation* grows like `sqrt(t)` and is bounded above by
+    # `sqrt(exp_mu_t) - 1` to leading order — so the term has the right units
+    # (a relative deviation) and the right asymptotic shape to absorb
+    # stochastic overshoot. `safety_factor` then sets how many "sigmas" of
+    # headroom to allocate: 1.0 ≈ 1σ, 2.0 ≈ 2σ, etc.
+    #
+    # This is a deliberately conservative, simulation-engineering heuristic
+    # rather than a tight statistical bound; the original derivation lives in
+    # the LASER team's capacity-planning notes (see commit history for
+    # `calc_capacity` introduction). If your model needs a calibrated bound,
+    # supersede this with a model-specific sizing pass and skip this function.
     safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
     estimates = np.round(initial_pop * safety_multiplier * exp_mu_t).astype(np.int32)
 
     return estimates
 
 
-def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origin_y=0, states=None):
+def grid(M=5, N=5, node_size_degs=0.08983, population_fn: Callable[[int, int], int] | None = None, origin_x=0, origin_y=0, states=None):
     """
     Create an MxN grid of cells anchored at (lat, long) with populations and geometries.
 
@@ -97,9 +124,14 @@ def grid(M=5, N=5, node_size_degs=0.08983, population_fn=None, origin_x=0, origi
         raise ValueError("origin_y must be -90 <= origin_y < 90")
 
     if population_fn is None:
+        # Use the LASER-wide PRNG so the default population draws are reproducible via
+        # `laser.core.random.seed`, per the convention documented in CLAUDE.md.
+        _grid_rng = prng()
 
-        def population_fn(row: int, col: int) -> int:
-            return int(np.random.uniform(1_000, 100_000))
+        def pop_fn(_row: int, _col: int) -> int:
+            return int(_grid_rng.uniform(1_000, 100_000))
+
+        population_fn = pop_fn
 
     states = states or ["S", "E", "I", "R"]
 
@@ -182,7 +214,8 @@ def initialize_population(grid, initial: list | np.ndarray, states=None):
         for index, state in enumerate(states):
             grid[state] = initial[:, index]
             total += initial[:, index]
-        assert np.all(total == grid.population), "Sum of initial states does not equal population at some nodes"
+        if not np.all(total == grid.population):
+            raise ValueError("Sum of initial states does not equal population at some nodes")
 
     elif np.all((initial >= 0.0) & (initial <= 1.0)):
         # If any rows sum to > 1.0, raise error

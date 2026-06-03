@@ -34,20 +34,62 @@ from operator import mul
 import h5py
 import numpy as np
 
+from laser.core._validation import _has_shape
+from laser.core._validation import _is_dtype
+from laser.core._validation import _is_instance
 from laser.core.utils import calc_capacity
 
 
 class LaserFrame:
+    """Dynamically-allocated agent / patch data store, similar to a Pandas DataFrame.
+
+    Each `LaserFrame` is a fixed-capacity columnar table where every property
+    (column) is a NumPy array preallocated to `capacity` entries, and an internal
+    `count` tracks how many entries are currently active. Properties are read back
+    as slices of length `count` (so `lf.age` returns the active subset, not the
+    full backing array) but the underlying buffer never resizes — this is the
+    "preallocate memory, never realloc" design principle documented in
+    `docs/architecture.rst`.
+
+    Three property kinds are supported:
+
+    - **Scalar** (one value per entry): [`add_scalar_property`][laser.core.LaserFrame.add_scalar_property].
+    - **Vector** (a fixed-length 1D vector per entry, stored as `(length, capacity)`):
+      [`add_vector_property`][laser.core.LaserFrame.add_vector_property].
+    - **Array** (arbitrary shape, not tied to capacity):
+      [`add_array_property`][laser.core.LaserFrame.add_array_property].
+
+    Lifecycle helpers include [`add`][laser.core.LaserFrame.add] to activate
+    additional entries, [`sort`][laser.core.LaserFrame.sort] to reorder them,
+    [`squash`][laser.core.LaserFrame.squash] to compact, and
+    [`save_snapshot`][laser.core.LaserFrame.save_snapshot] /
+    [`load_snapshot`][laser.core.LaserFrame.load_snapshot] for HDF5 persistence.
+
+    Attributes:
+        count (int): Number of currently-active entries (`0 <= count <= capacity`).
+        capacity (int): Fixed maximum capacity set at construction; immutable.
+
+    See also:
+        - The "Extension Points" section of `docs/architecture.rst` for the recommended
+          pattern when subclassing `LaserFrame` for model-specific frames.
+        - `docs/usage.rst` for a runnable quick-start.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import LaserFrame
+
+        frame = LaserFrame(capacity=10_000)
+        frame.add_scalar_property("age", dtype=np.int32, default=0)
+        start, end = frame.add(100)
+        frame.age[start:end] = np.arange(100)
     """
-    The LaserFrame class, similar to a db table or a Pandas DataFrame, holds dynamically
-    allocated data for agents (generally 1-D or scalar) or for nodes|patches (e.g., 1-D for
-    scalar value per patch or 2-D for time-varying per patch)."""
 
     def __init__(self, capacity: int, initial_count: int = -1, **kwargs):
         """
         Initialize a LaserFrame object.
 
-        Parameters:
+        Args:
             capacity (int): The maximum capacity of the frame.
                             Must be a positive integer.
             initial_count (int): The initial number of active elements in the frame.
@@ -80,6 +122,81 @@ class LaserFrame:
 
         return
 
+    @classmethod
+    def from_properties(cls, capacity: int, *, initial_count: int = -1, **properties) -> "LaserFrame":
+        """One-shot constructor — instantiate a LaserFrame and register a set of properties.
+
+        Collapses the typical 3-4-line setup chain (``LaserFrame(...)`` plus a sequence
+        of ``add_scalar_property`` / ``add_vector_property`` / ``add_array_property``
+        calls) into a single call. Each keyword argument is a property spec; the spec
+        shape determines which underlying registration method is used:
+
+        - **Bare dtype** (e.g. ``np.int32``, ``bool``, ``np.float32``) → scalar property
+          via [`add_scalar_property`][laser.core.LaserFrame.add_scalar_property]. Default
+          value is ``0``.
+        - **2-tuple ``(length, dtype)``** where ``length`` is an ``int`` → vector property
+          via [`add_vector_property`][laser.core.LaserFrame.add_vector_property].
+        - **2-tuple ``(shape, dtype)``** where ``shape`` is itself a ``tuple`` → array
+          property via [`add_array_property`][laser.core.LaserFrame.add_array_property].
+
+        Property names that collide with the explicit constructor parameters
+        (``capacity``, ``initial_count``) are not supported by this convenience form;
+        use the imperative API for those edge cases.
+
+        Args:
+            capacity (int): Maximum capacity passed to the constructor.
+            initial_count (int, optional): Initial active count (default ``-1``,
+                which sets the active count to ``capacity``).
+            **properties: Property specs as described above. Each key is the property
+                name; each value is a dtype or a 2-tuple.
+
+        Returns:
+            LaserFrame: A fully-initialized frame with all properties registered.
+
+        Raises:
+            TypeError: If a property spec is not a recognized form (e.g. a 3-tuple, or
+                a 2-tuple whose first element is neither an ``int`` nor a ``tuple``).
+            ValueError: Propagated from the constructor if ``capacity`` or
+                ``initial_count`` is invalid, or from the underlying ``add_*_property``
+                methods if a name collides with an existing attribute.
+
+        **Example**:
+
+            import numpy as np
+            from laser.core import LaserFrame
+
+            frame = LaserFrame.from_properties(
+                capacity=10_000,
+                age=np.int32,                  # scalar property
+                infected=bool,                 # scalar property (bool dtype)
+                position=(2, np.float32),      # vector property, length 2
+                history=((10, 5), np.float64), # array property, shape (10, 5)
+            )
+            start, end = frame.add(100)
+            frame.age[start:end] = np.arange(100)
+        """
+        frame = cls(capacity=capacity, initial_count=initial_count)
+        for name, spec in properties.items():
+            if isinstance(spec, tuple):
+                if len(spec) != 2:
+                    raise TypeError(f"property {name!r}: spec tuple must have length 2 " f"(got length {len(spec)}: {spec!r})")
+                shape_or_length, dtype = spec
+                if isinstance(shape_or_length, bool) or not isinstance(shape_or_length, int):
+                    # `bool` is a subclass of `int`, so guard that case explicitly.
+                    if isinstance(shape_or_length, tuple):
+                        frame.add_array_property(name, shape=shape_or_length, dtype=dtype)
+                    else:
+                        raise TypeError(
+                            f"property {name!r}: spec[0] must be an int (vector length) or "
+                            f"tuple (array shape), got {type(shape_or_length).__name__} ({shape_or_length!r})"
+                        )
+                else:
+                    frame.add_vector_property(name, length=shape_or_length, dtype=dtype)
+            else:
+                # Treat any non-tuple spec as a scalar dtype.
+                frame.add_scalar_property(name, dtype=spec)
+        return frame
+
     # dynamically add a property to the class
     def add_scalar_property(self, name: str, dtype=np.uint32, default=0) -> None:
         """
@@ -88,7 +205,7 @@ class LaserFrame:
         This method initializes a new scalar property for the class instance. The property is
         stored as a 1-D NumPy array (scalar / entry) with a specified data type and default value.
 
-        Parameters:
+        Args:
             name (str): The name of the scalar property to be added.
             dtype (data-type, optional): The desired data type for the property. Default is np.uint32.
             default (scalar, optional): The default value for the property. Default is 0.
@@ -116,7 +233,7 @@ class LaserFrame:
         with the specified default value. The data type of the array elements is
         determined by the `dtype` parameter.
 
-        Parameters:
+        Args:
             name (str): The name of the property to be added.
             length (int): The length of the vector.
             dtype (data-type, optional): The desired data-type for the array, default is np.uint32.
@@ -157,7 +274,7 @@ class LaserFrame:
         The array will have the given shape (note that there is no implied dimension of size self._capacity),
         datatype (default is np.uint32), and default value (default is 0).
 
-        Parameters:
+        Args:
             name (str): The name of the property to be added.
             shape (tuple): The shape of the array.
             dtype (data-type, optional): The desired data-type for the array, default is np.uint32.
@@ -200,16 +317,16 @@ class LaserFrame:
         """
         Adds the specified count to the current count of the LaserFrame.
 
-        This method increments the internal count by the given count, ensuring that the total does not exceed the frame's capacity. If the addition would exceed the capacity, an assertion error is raised. This method is typically used to add new births during the simulation.
+        This method increments the internal count by the given count, ensuring that the total does not exceed the frame's capacity. If the addition would exceed the capacity, a `ValueError` is raised. This method is typically used to add new births during the simulation.
 
-        Parameters:
+        Args:
             count (int): The number to add to the current count.
 
         Returns:
             tuple[int, int]: A tuple containing the [start index, end index) after the addition.
 
         Raises:
-            AssertionError: If the resulting count exceeds the frame's capacity.
+            ValueError: If the resulting count exceeds the frame's capacity.
         """
 
         if not self._count + count <= self._capacity:
@@ -227,12 +344,12 @@ class LaserFrame:
         """
         Sorts the elements of the object's numpy arrays based on the provided indices.
 
-        Parameters:
+        Args:
             indices (np.ndarray): An array of indices used to sort the numpy arrays. Must be of integer type and have the same length as the frame count (`self._count`).
             verbose (bool, optional): If True, prints the sorting progress for each numpy array attribute. Defaults to False.
 
         Raises:
-            AssertionError: If `indices` is not an integer array or if its length does not match the frame count of active elements.
+            TypeError: If `indices` is not a NumPy integer array or if its length does not match the frame count of active elements.
         """
 
         _is_instance(indices, np.ndarray, f"Indices must be a numpy array (got {type(indices)})")
@@ -256,12 +373,12 @@ class LaserFrame:
         """
         Reduces the active count of the internal numpy arrays keeping only elements True in the provided boolean indices.
 
-        Parameters:
+        Args:
             indices (np.ndarray): A boolean array indicating which elements to keep. Must have the same length as the current frame active element count.
             verbose (bool, optional): If True, prints detailed information about the squashing process. Defaults to False.
 
         Raises:
-            AssertionError: If `indices` is not a boolean array or if its length does not match the current frame active element count.
+            TypeError: If `indices` is not a NumPy boolean array or if its length does not match the current frame active element count.
 
         Returns:
             None
@@ -286,7 +403,7 @@ class LaserFrame:
         """
         Save this LaserFrame and optional extras to an HDF5 snapshot file.
 
-        Parameters:
+        Args:
             path (Path): Destination file path
             results_r (np.ndarray): Optional 2D numpy array of recovered counts
             pars (PropertySet or dict): Optional PropertySet or dict of parameters
@@ -304,8 +421,19 @@ class LaserFrame:
                 self._save_dict(data, f.create_group("pars"))
 
     def _save(self, parent_group, name):
-        """
-        Internal method to save this LaserFrame under the given group name.
+        """Serialize this LaserFrame into a new HDF5 subgroup of `parent_group`.
+
+        Stores `count` and `capacity` as group attributes and persists each scalar
+        property as a dataset truncated to the active count. Vector / array properties
+        are intentionally skipped to keep the snapshot format compatible with
+        [`load_snapshot`][laser.core.LaserFrame.load_snapshot].
+
+        Args:
+            parent_group (h5py.Group): Parent HDF5 group in which to create the new subgroup.
+            name (str): Name of the subgroup to create (typically `"people"`).
+
+        Returns:
+            None: The subgroup is written in place on `parent_group`.
         """
         group = parent_group.create_group(name)
         group.attrs["count"] = self._count
@@ -319,8 +447,18 @@ class LaserFrame:
         return
 
     def _save_dict(self, data, group):
-        """
-        Internal method to save a dict as datasets and attributes in a group.
+        """Write a parameter dictionary into an HDF5 group as datasets and string attributes.
+
+        Each key/value pair is stored as a dataset when h5py can serialize the value
+        natively; otherwise the value is `str(...)`-cast and stored as a group attribute.
+
+        Args:
+            data (dict): Mapping of parameter names to values. Values may be NumPy arrays,
+                Python scalars, or anything else that round-trips through `str(...)`.
+            group (h5py.Group): Destination HDF5 group (typically `f.create_group("pars")`).
+
+        Returns:
+            None: Datasets and attributes are written in place on `group`.
         """
         for key, value in data.items():
             try:
@@ -691,41 +829,3 @@ class LaserFrame:
         description = "\n".join(description)
 
         return description
-
-
-# Sanity checks
-
-
-def _is_instance(obj, types, message):
-    if not isinstance(obj, types):
-        raise TypeError(message)
-
-    return
-
-
-# def _has_dimensions(obj, dimensions, message):
-#     if not len(obj.shape) == dimensions:
-#         raise TypeError(message)
-
-#     return
-
-
-def _is_dtype(obj, dtype, message):
-    if not np.issubdtype(obj.dtype, dtype):
-        raise TypeError(message)
-
-    return
-
-
-# def _has_values(check, message):
-#     if not np.all(check):
-#         raise ValueError(message)
-
-#     return
-
-
-def _has_shape(obj, shape, message):
-    if not obj.shape == shape:
-        raise TypeError(message)
-
-    return

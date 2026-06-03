@@ -9,21 +9,50 @@ from laser.core.random import prng
 
 
 class AliasedDistribution:
-    """A class to generate samples from a distribution using the Vose alias method."""
+    """Discrete distribution sampler using the Vose alias method.
+
+    Construct from a vector of bin counts (or relative weights); subsequent calls to
+    [`sample`][laser.core.demographics.AliasedDistribution.sample] return bin indices in
+    `O(1)` per draw regardless of the number of bins. Particularly useful for sampling
+    from age pyramids loaded by
+    [`load_pyramid_csv`][laser.core.demographics.load_pyramid_csv].
+
+    Attributes:
+        alias (np.ndarray): Alias index lookup table.
+        probs (np.ndarray): Per-bin acceptance thresholds (scaled by `len(probs)`).
+        total (int): Sum of the original input counts.
+
+    **Example**:
+
+        from laser.core.demographics import AliasedDistribution, load_pyramid_csv
+
+        pyramid = load_pyramid_csv("examples/Nigeria-2024.csv")
+        male_dist = AliasedDistribution(pyramid[:, 2])
+        bins = male_dist.sample(count=10_000)
+    """
 
     def __init__(self, counts):
+        """Build the alias and probability tables for the Vose alias method.
+
+        Args:
+            counts (array-like of int): Bin counts (or relative weights) used to construct
+                the discrete distribution. Must contain at least one positive value.
+
+        Raises:
+            ValueError: If `counts` has zero length or sums to zero (no normalization possible).
+
+        **Example**:
+
+            dist = AliasedDistribution([10, 20, 30, 40])
+            sample = dist.sample(count=5)
+        """
         # TODO, consider int64 or uint64 if using global population
         alias = np.full(len(counts), -1, dtype=np.int32)
         probs = np.array(counts, dtype=np.int32)
         total = probs.sum()
-        probs *= len(probs)  # See following explanation.
-
-        """
-        We want to know if any particular bin's probability is less than the average probability.
-        So we want to know if p[i] < (p.sum() / len(p)).
-        We rearrange this to (p[i] * len(p)) < p.sum().
-        Now we can check below if p'[i] < p.sum() where p'[i] = p[i] * len(p).
-        """
+        # Scale by len(probs) so we can test bin probability against the average without division:
+        # we want p[i] < p.sum() / len(p); rearranged to (p[i] * len(p)) < p.sum().
+        probs *= len(probs)
 
         small = [i for i, value in enumerate(probs) if value < total]
         large = [i for i, value in enumerate(probs) if value > total]
@@ -45,14 +74,25 @@ class AliasedDistribution:
 
     @property
     def alias(self) -> np.ndarray:
+        """np.ndarray: The alias index lookup table used by the Vose alias method.
+
+        Each entry `alias[i]` is the fallback bin chosen when a uniform draw against
+        `probs[i]` indicates the current bin `i` should be substituted.
+        """
         return self._alias
 
     @property
     def probs(self) -> np.ndarray:
+        """np.ndarray: The per-bin acceptance thresholds (scaled by `len(probs)`).
+
+        At sampling time, a bin `i` is accepted directly when a uniform draw in
+        `[0, total)` is less than `probs[i]`; otherwise the alias bin is substituted.
+        """
         return self._probs
 
     @property
     def total(self) -> int:
+        """int: Sum of the original input counts, used as the uniform-draw upper bound."""
         return self._total
 
     def sample(self, count=1, dtype=np.int32) -> int:

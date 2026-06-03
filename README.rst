@@ -74,6 +74,18 @@ Documentation
 https://docs.idmod.org/projects/laser/en/latest/
 
 
+Support and contact
+===================
+
+* **Bug reports and feature requests**: https://github.com/laser-base/laser-core/issues
+* **Maintainers**: Christopher Lorton (christopher.lorton@gatesfoundation.org)
+  and Jonathan Bloedow (jonathan.bloedow@gatesfoundation.org)
+* **Contributing**: see ``CONTRIBUTING.rst``
+* **AI assistants**: a project orientation for AI coding assistants (Claude
+  Code, Cursor, etc.) lives at ``CLAUDE.md`` at the repository root; a Claude
+  Code skill manifest is at ``.claude/skills/laser-core.md``.
+
+
 Development
 ===========
 

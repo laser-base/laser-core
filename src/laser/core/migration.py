@@ -22,12 +22,21 @@ Functions:
         Compute a migration network using the radiation model, which models flows based on intervening population rather than physical distance.
 
     distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        Calculate the great-circle distance between two points on the Earth's surface
-        using the Haversine formula.
+        Calculate the great-circle distance between two points on the Earth's surface using the Haversine formula.
+
+    build_network(model_fn: Callable, pops: np.ndarray, distances: np.ndarray, max_rowsum: Optional[float], model_params) -> np.ndarray:
+        Build a migration network using the specified model function and parameters, with optional row normalization.
 """
+
 from numbers import Number
 
 import numpy as np
+
+from ._validation import _has_dimensions
+from ._validation import _has_shape
+from ._validation import _has_values
+from ._validation import _is_dtype
+from ._validation import _is_instance
 
 
 def gravity(pops: np.ndarray, distances: np.ndarray, k: float, a: float, b: float, c: float, **kwargs):
@@ -192,20 +201,82 @@ def competing_destinations(pops, distances, k, a, b, c, delta, **params):
     # Don't subtract off the diagonal - this could be a NaN if distance to self is zero
     np.fill_diagonal(competition_matrix, 0)
     mysums = np.sum(competition_matrix, axis=1)
-    # Rather than computing that interior sum for each element, just compute the row sums,
-    # and then subtract the k=i term.
-    for i in range(len(pops)):
-        for j in range(len(pops)):
-            if j != i:
-                network[i][j] = network[i][j] * (mysums[j] - competition_matrix[j][i]) ** delta
+    # For every (i, j), the bracketed sum is mysums[j] - competition_matrix[j, i], i.e. the
+    # row sum of j with the k=i term removed (k=j is already zero on the diagonal).
+    # Broadcasting mysums (1, N) against competition_matrix.T builds the full adjustment matrix
+    # in one shot, replacing the prior O(N^2) double Python loop.
+    adjustment = (mysums[np.newaxis, :] - competition_matrix.T) ** delta
+    network *= adjustment
 
     np.fill_diagonal(network, 0)
     return network
 
 
-def sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
-    # Separating this operation out because it is common between a couple of migration models, and there is a little trickiness in appropriately
-    # handling cases where there are multiple destinations equidistant from the source node.
+def _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d):
+    """For each row, returns `cumsum(sorted_pops_2d)` with any group of equidistant
+    destinations sharing the cumulative sum at the rightmost (largest) index of the group.
+    This is the matrix used by the vectorized `stouffer` and `radiation` implementations.
+
+    The single Python loop runs over columns (`O(N)` iterations) rather than over rows
+    (`O(N)` rows × per-row `O(N)` helper = `O(N^2)` Python iterations in the prior code),
+    with each iteration doing only vectorized work across all rows.
+
+    Args:
+        sorted_pops_2d (np.ndarray): 2D array of shape `(N, N)`; row `i` is `pops[sort_indices[i]]`.
+        sorted_distances_2d (np.ndarray): 2D array of shape `(N, N)`; row `i` is
+            `distances[i][sort_indices[i]]`, ascending.
+
+    Returns:
+        np.ndarray: 2D array of shape `(N, N)` with the corrected cumulative sums.
+
+    Raises:
+        ValueError: Propagated from `np.cumsum` / `np.take_along_axis` if
+            `sorted_pops_2d` and `sorted_distances_2d` have mismatched shapes
+            or are not 2D. Callers in this module (`stouffer`, `radiation`)
+            validate inputs via [`_sanity_checks`][laser.core.migration._sanity_checks]
+            before delegating, so this branch is only reachable when the helper
+            is called directly with malformed inputs.
+    """
+    cumulative = np.cumsum(sorted_pops_2d, axis=1).astype(np.float64, copy=False)
+    n_cols = sorted_distances_2d.shape[1]
+    if n_cols <= 1:
+        return cumulative
+    # group_end[i, k] = rightmost column index in k's tied-distance group on row i.
+    group_end = np.broadcast_to(np.arange(n_cols), sorted_distances_2d.shape).copy()
+    # Right-to-left propagation: tied positions inherit the group end of the next column.
+    for k in range(n_cols - 2, -1, -1):
+        tied_mask = sorted_distances_2d[:, k] == sorted_distances_2d[:, k + 1]
+        group_end[tied_mask, k] = group_end[tied_mask, k + 1]
+    return np.take_along_axis(cumulative, group_end, axis=1)
+
+
+def _sum_populations_as_close_or_closer(sorted_pops, sorted_distance_row):
+    r"""Cumulative sum of populations of all destinations at or closer than each candidate.
+
+    Both `stouffer` and `radiation` need, for each destination `j`, the sum of populations at
+    destinations `k` where `distance(i, k) <= distance(i, j)`. With unique distances this is a
+    plain `cumsum` over the distance-sorted populations. When multiple destinations are
+    equidistant from the source, every member of the tied group must share the same partial
+    sum (the largest one in the tie), or the resulting model probabilities will violate the
+    "as close or closer" requirement.
+
+    Args:
+        sorted_pops (np.ndarray): 1D non-negative numeric array of populations, sorted by
+            distance from the source node (i.e. `pops[sort_indices[i]]`).
+        sorted_distance_row (np.ndarray): 1D non-negative numeric array of distances from
+            the source node, sorted in ascending order (i.e. `distances[i][sort_indices[i]]`).
+            Must have the same shape as `sorted_pops`.
+
+    Returns:
+        np.ndarray: 1D array where entry `j` is the population sum over all `k` with
+            `sorted_distance_row[k] <= sorted_distance_row[j]`. Ties in distance produce
+            identical sums across the tied positions.
+
+    Raises:
+        TypeError: If inputs are not NumPy arrays, are not numeric, or have mismatched shapes.
+        ValueError: If inputs contain negative values, or `sorted_distance_row` is not sorted
+            in ascending order.
+    """
     _is_instance(sorted_pops, np.ndarray, f"sorted_pops must be a NumPy array ({type(sorted_pops)=})")
     _is_dtype(sorted_pops, np.number, f"sorted_pops must be a numeric array ({sorted_pops.dtype=})")
     _has_values(sorted_pops >= 0, "sorted_pops must contain only non-negative values")
@@ -246,7 +317,7 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
     Mathematical formula:
         Element-by-element:
             $$
-            network_{i,j} = k \times p_i \times p_j / ( (p_i + \sum_k {p_k}) (p_i + p_j + \sum_k {p_k}) )
+            network_{i,j} = k \times p_i^a \times (p_j / \sum_k {p_k} )^b,
             $$
             the parameter ``include_home`` determines whether $p_i$ is included or excluded from the sum
 
@@ -284,20 +355,21 @@ def stouffer(pops, distances, k, a, b, include_home, **params):
 
     # We will just use the "truthiness" of include_home (could be boolean, could be 0/1)
 
-    network = np.zeros_like(distances)
     sort_indices = np.argsort(distances, axis=1, kind="stable")
     unsort_indices = np.argsort(sort_indices, axis=1)
 
-    for i in range(len(pops)):
-        sorted_pops = pops[sort_indices[i]]
-        cumulative_sorted_pops = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+    sorted_pops_2d = pops[sort_indices]
+    sorted_distances_2d = np.take_along_axis(distances, sort_indices, axis=1)
+    cumulative_2d = _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d)
 
-        if not include_home:
-            cumulative_sorted_pops = cumulative_sorted_pops - sorted_pops[0]
+    if not include_home:
+        cumulative_2d = cumulative_2d - sorted_pops_2d[:, 0:1]
 
-        network[i, 1:] = k * pops[i] ** a * (sorted_pops[1:] / cumulative_sorted_pops[1:]) ** b
-    network = np.take_along_axis(network, unsort_indices, axis=1)
+    network_sorted = np.zeros_like(distances)
+    # Column 0 is the source itself (distance 0 sorts first); it stays at 0 and is zeroed at the end via fill_diagonal.
+    network_sorted[:, 1:] = k * (pops[:, np.newaxis] ** a) * (sorted_pops_2d[:, 1:] / cumulative_2d[:, 1:]) ** b
 
+    network = np.take_along_axis(network_sorted, unsort_indices, axis=1)
     np.fill_diagonal(network, 0)
     return network
 
@@ -311,7 +383,7 @@ def radiation(pops, distances, k, include_home, **params):
     Mathematical formula:
         Element-by-element:
             $$
-            network_{i,j} = k \times p_i^a \times (p_j / \sum_k {p_k} )^b,
+            network_{i,j} = k \times p_i \times p_j / ( (p_i + \sum_k {p_k}) (p_i + p_j + \sum_k {p_k}) )
             $$
             where the sum proceeds over all $k$ such that $distances_{i,k} \leq distances_{i,j}$
             the parameter ``include_home`` determines whether $p_i$ is included or excluded from the sum.
@@ -350,20 +422,20 @@ def radiation(pops, distances, k, include_home, **params):
 
     # We will just use the "truthiness" of include_home (could be boolean, could be 0/1)
 
-    network = np.zeros_like(distances)
     sort_indices = np.argsort(distances, axis=1, kind="stable")
     unsort_indices = np.argsort(sort_indices, axis=1)
 
-    for i in range(len(pops)):
-        sorted_pops = pops[sort_indices[i]]
-        cumulative_sorted_pops = sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+    sorted_pops_2d = pops[sort_indices]
+    sorted_distances_2d = np.take_along_axis(distances, sort_indices, axis=1)
+    cumulative_2d = _cumulative_at_or_closer_2d(sorted_pops_2d, sorted_distances_2d)
 
-        if not include_home:
-            cumulative_sorted_pops = cumulative_sorted_pops - sorted_pops[0]
+    if not include_home:
+        cumulative_2d = cumulative_2d - sorted_pops_2d[:, 0:1]
 
-        network[i] = k * pops[i] * sorted_pops / (pops[i] + cumulative_sorted_pops) / (pops[i] + sorted_pops + cumulative_sorted_pops)
+    pops_col = pops[:, np.newaxis]
+    network_sorted = k * pops_col * sorted_pops_2d / (pops_col + cumulative_2d) / (pops_col + sorted_pops_2d + cumulative_2d)
 
-    network = np.take_along_axis(network, unsort_indices, axis=1)
+    network = np.take_along_axis(network_sorted, unsort_indices, axis=1)
     np.fill_diagonal(network, 0)
     return network
 
@@ -421,14 +493,21 @@ def distance(lat1, lon1, lat2=None, lon2=None):
     lon1 = np.radians(lon1)
     lat2 = np.radians(lat2)
     lon2 = np.radians(lon2)
-    d = np.zeros((lat1.size, lat2.size))
-    for index in range(lat1.size):
-        # haversine formula (https://en.wikipedia.org/wiki/Haversine_formula)
-        dlat = lat2 - lat1[index]
-        dlon = lon2 - lon1[index]
-        a = np.sin(dlat / 2) ** 2 + np.cos(lat1[index]) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-        d[index, :] = a
-    d = 2 * np.arcsin(np.sqrt(d))
+
+    # Haversine formula (https://en.wikipedia.org/wiki/Haversine_formula).
+    # Broadcasting lat1/lon1 as columns against lat2/lon2 as rows builds the (N, M) matrix in
+    # a single vectorized pass — replacing the prior per-row Python loop.
+    lat1_col = lat1[:, np.newaxis]
+    lon1_col = lon1[:, np.newaxis]
+    dlat = lat2[np.newaxis, :] - lat1_col
+    dlon = lon2[np.newaxis, :] - lon1_col
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1_col) * np.cos(lat2)[np.newaxis, :] * np.sin(dlon / 2) ** 2
+    d = 2 * np.arcsin(np.sqrt(a))
+    # IUGG mean Earth radius R_1 = (2 a + b) / 3 ≈ 6371.0088 km (a = WGS84 equatorial
+    # radius 6378.137 km, b = polar radius 6356.752 km). Rounded to 6371.0 km here
+    # because the Haversine formula already assumes a spherical Earth, so the extra
+    # precision in R_1 is dominated by the spherical-Earth approximation itself.
+    # Reference: Moritz, H. (2000), "Geodetic Reference System 1980", J. Geodesy 74(1).
     RE = 6371.0  # Earth radius in km
     d *= RE
 
@@ -438,6 +517,40 @@ def distance(lat1, lon1, lat2=None, lon2=None):
         return d.reshape((d.size,))  # return a vector (1-D)
 
     return d  # return NxM matrix (len(lat1/lon1) x len(lat2/lon2))
+
+
+def build_network(model_fn, pops, distances, *, max_rowsum=None, **model_params) -> np.ndarray:
+    """
+    Build a migration network using the specified model function and parameters.
+
+    Usage:
+
+        ```python
+        network = build_network(
+            model_fn=gravity,
+            pops=pops_array,
+            distances=distances_array,
+            max_rowsum=0.5,
+            k=0.5,
+            a=1.0,
+            b=1.0,
+            c=2.0
+        )
+        ```
+
+    Parameters:
+        model_fn (callable): A function that computes a migration network given populations, distances, and model parameters.
+        pops (numpy.ndarray): An array of population sizes for each node.
+        distances (numpy.ndarray): A 2D array of distances between nodes.
+        max_rowsum (float, optional): If provided, the maximum allowable sum for any row in the resulting network matrix. If None, no row normalization is applied.
+        model_params (dict): Additional parameters to be passed to the model function.
+    """
+    network = model_fn(pops, distances, **model_params)
+
+    if max_rowsum is not None:
+        network = row_normalizer(network, max_rowsum)
+
+    return network
 
 
 # Sanity checks
@@ -487,38 +600,3 @@ def _sanity_checks(pops, distances, **params):
     if "include_home" in params:
         include_home = params.get("include_home", None)
         _is_instance(include_home, (int, bool), f"include_home must be boolean or integer type ({type(include_home)=})")
-
-
-def _is_instance(obj, types, message):
-    if not isinstance(obj, types):
-        raise TypeError(message)
-
-    return
-
-
-def _has_dimensions(obj, dimensions, message):
-    if not len(obj.shape) == dimensions:
-        raise TypeError(message)
-
-    return
-
-
-def _is_dtype(obj, dtype, message):
-    if not np.issubdtype(obj.dtype, dtype):
-        raise TypeError(message)
-
-    return
-
-
-def _has_values(check, message):
-    if not np.all(check):
-        raise ValueError(message)
-
-    return
-
-
-def _has_shape(obj, shape, message):
-    if not obj.shape == shape:
-        raise TypeError(message)
-
-    return

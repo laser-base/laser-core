@@ -222,7 +222,187 @@ Here’s how you should break down your modeling problem to model a disease with
 3. Figure out the updates you'll need to do each timestep, as declarations.
 4. Add component code for each of those updates.
 
+.. _extension-points:
+
+Extension Points
+================
+
+LASER is intentionally a small set of composable primitives rather than a rigid
+framework — most extension lives in *your* model script, not in a subclass tree
+inside ``laser.core``. That said, three patterns recur often enough to call out:
+
+Subclassing ``LaserFrame``
+--------------------------
+
+Subclass when you want a model-flavored frame that pre-registers its properties
+and exposes domain methods. Avoid subclassing just to add helper methods that
+could live on the model class itself.
+
+.. code-block:: python
+
+    import numpy as np
+    from laser.core import LaserFrame
+
+    class SIRFrame(LaserFrame):
+        """A LaserFrame pre-populated with the properties an SIR model needs."""
+
+        def __init__(self, capacity, initial_count=-1):
+            super().__init__(capacity=capacity, initial_count=initial_count)
+            self.add_scalar_property("state", dtype=np.uint8, default=0)  # 0=S, 1=I, 2=R
+            self.add_scalar_property("infection_timer", dtype=np.int16, default=0)
+            self.add_scalar_property("date_of_birth", dtype=np.int32, default=0)
+
+        def infected_count(self) -> int:
+            """Number of currently-infected agents in the active slice."""
+            return int(np.count_nonzero(self.state == 1))
+
+    frame = SIRFrame(capacity=1_000_000, initial_count=100_000)
+    start, end = frame.add(0)  # already initialized; no new activation needed
+    frame.state[:100] = 1      # seed 100 infections
+
+Extending ``PropertySet``
+-------------------------
+
+``PropertySet`` is a flat parameter bag. The recommended pattern is to keep
+parameters in a vanilla ``PropertySet`` and compose them with ``+=``, ``<<=``,
+or ``|=`` rather than to subclass. If you do subclass — for instance to attach
+validation or a ``to_yaml`` method — keep the public attributes flat so the
+existing operators continue to work:
+
+.. code-block:: python
+
+    from laser.core import PropertySet
+
+    class ValidatedSIRParams(PropertySet):
+        """SIR parameters with a single ``validate`` hook called by your model setup."""
+
+        def validate(self):
+            if not (0.0 <= self.beta <= 10.0):
+                raise ValueError(f"beta must be in [0, 10] (got {self.beta!r})")
+            if not (0.0 <= self.gamma <= 1.0):
+                raise ValueError(f"gamma must be in [0, 1] (got {self.gamma!r})")
+
+    pars = ValidatedSIRParams({"beta": 0.4, "gamma": 0.1})
+    pars |= {"seed": 20260514}   # composition still works
+    pars.validate()
+
+.. _migration-model-protocol:
+
+Adding a custom migration model
+-------------------------------
+
+Migration models in :mod:`laser.core.migration` are plain functions following a
+single duck-typed protocol; there is no plugin registry, abstract base class, or
+inheritance hierarchy. A user-defined model that conforms to the protocol below
+works as a first-class peer of the built-ins — including with
+:func:`~laser.core.migration.build_network` for composition with
+:func:`~laser.core.migration.row_normalizer`.
+
+The migration-model protocol
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A migration model is any callable with the signature::
+
+    model(pops, distances, **params) -> np.ndarray
+
+and the following input / output contract:
+
+**Inputs**
+
+- ``pops`` (``np.ndarray``): 1-D non-negative numeric array of length ``N``
+  (one entry per node). Models must internally promote to ``float64`` before
+  exponentiation to avoid integer-overflow issues; the built-ins do this via
+  ``pops.astype(np.float64)``.
+- ``distances`` (``np.ndarray``): 2-D symmetric numeric array of shape
+  ``(N, N)``. The diagonal must be ``0`` (distance to self). Off-diagonal
+  entries must be strictly positive — zero off-diagonal distances are not
+  supported and will produce ``inf`` / ``NaN`` in models that include a
+  ``distance ** -c`` term.
+- ``**params``: model-specific scalar parameters (``k``, ``a``, ``b``, ``c``,
+  ``delta``, ``include_home``, etc.). Conventionally numeric, validated at the
+  top of the function with the shared
+  :mod:`laser.core._validation` helpers (`_is_instance`, `_has_values`, …) or
+  with explicit `ValueError` / `TypeError` raises. **Do not** use bare
+  ``assert`` — it is suppressed under ``python -O``.
+
+**Output**
+
+- A 2-D ``np.ndarray`` of shape ``(N, N)`` and dtype ``float64`` representing
+  the migration network. Entry ``M[i, j]`` is the flow (or per-capita rate,
+  or flux — see the "Interpreting the output units" note in
+  :doc:`migration`) from node ``i`` to node ``j``. The diagonal must be ``0``
+  (no self-loops).
+
+**Error semantics**
+
+- Raise ``TypeError`` for shape / dtype / instance-type mismatches.
+- Raise ``ValueError`` for negative populations, asymmetric distance matrices,
+  out-of-domain parameter values, etc.
+- Numerical edge cases (e.g. ``mysums[j] - 0`` in a power expression) should
+  be handled either by the validator or by explicit promotion / clipping in
+  the body of the model — see the existing models for examples.
+
+**Optional**
+
+- A model may accept additional keyword arguments without using them
+  (``**params`` swallows them); this is how built-ins remain compatible with
+  the generic ``build_network`` call site.
+
+Worked example
+^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    import numpy as np
+    from laser.core import migration
+    from laser.core._validation import _has_dimensions, _has_values, _is_dtype, _is_instance
+
+    def exponential_decay(pops, distances, k, scale, **_):
+        """A custom migration model: flows decay exponentially with distance.
+
+        network[i, j] = k * pops[j] * exp(-distance[i, j] / scale), with zero diagonal.
+        """
+        # Use the same boundary-validation pattern as the built-in models.
+        _is_instance(pops, np.ndarray, "pops must be a NumPy array")
+        _is_dtype(pops, np.number, "pops must be a numeric array")
+        _has_values(pops >= 0, "pops must contain only non-negative values")
+        _is_instance(distances, np.ndarray, "distances must be a NumPy array")
+        _has_dimensions(distances, 2, "distances must be a 2D array")
+        _has_values(distances == distances.T, "distances must be symmetric")
+        if not (isinstance(k, (int, float)) and k >= 0):
+            raise ValueError(f"k must be a non-negative number (got {k!r})")
+        if not (isinstance(scale, (int, float)) and scale > 0):
+            raise ValueError(f"scale must be a positive number (got {scale!r})")
+
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = k * pops[np.newaxis, :] * np.exp(-distances / scale)
+        np.fill_diagonal(network, 0)
+        return network
+
+    # Use it like a built-in — either as a two-step chain:
+    net = exponential_decay(pops, distances, k=0.01, scale=100.0)
+    net = migration.row_normalizer(net, max_rowsum=0.05)
+
+    # ...or compose model + normalize in one call via build_network. Because
+    # build_network only requires the `(pops, distances, **params)` signature
+    # above, it works with any user-defined model that follows the protocol.
+    net = migration.build_network(
+        exponential_decay, pops, distances, max_rowsum=0.05, k=0.01, scale=100.0,
+    )
+
+When in doubt, prefer **composition** (a regular function or model class that
+*uses* ``LaserFrame``, ``PropertySet``, and the migration helpers) over
+inheritance.
+
 Glossary of Terms
 =================
 - **Patch**
-  Something...
+  In a spatially structured or metapopulation model, a discrete subregion
+  treated as a single unit for the purposes of parameterization: values such as
+  disease transmission rate (β), seasonality forcing, birth and death rates, and
+  environmental conditions are defined at the patch level and apply uniformly to
+  all agents or individuals within it. Patches are coupled by movement or transmission
+  terms representing migration or travel between subregions. Contrast with *node*
+  (graph-theoretic, scale-neutral) and *population center* (empirically defined
+  geographic unit).

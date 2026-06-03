@@ -13,37 +13,31 @@ on:
         type: boolean
         default: false
 
-# TODO: switch this from "advisory" to "required" by:
-#   1. Running `pytest benchmarks/ --benchmark-only --benchmark-save=main` on a clean main
-#      commit on the canonical runner (ubuntu-latest, Python 3.12) and committing the
-#      resulting `.benchmarks/Linux-CPython-3.12-64bit/*.json` baseline.
-#   2. Removing the `continue-on-error` line below.
-#   3. Choosing a `--benchmark-compare-fail` threshold suitable for the noise floor
-#      you observe (suggested starting point: `min:25%` — fail if best-of-runs slowed
-#      by more than 25%).
-
 jobs:
   benchmark:
-    name: pytest-benchmark (advisory)
+    name: pytest-benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true  # TODO: remove once baselines and thresholds are locked in
     steps:
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
+
       - name: install package and benchmark deps
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]" pytest-benchmark
+
       - name: run benchmarks
         run: |
           EXTRA_ARGS=""
           if [ "${{ github.event.inputs.save_baseline }}" = "true" ]; then
-            EXTRA_ARGS="--benchmark-save=main"
+            EXTRA_ARGS="--benchmark-save=baseline"
           fi
           pytest benchmarks/ \
             --benchmark-only \
@@ -53,16 +47,17 @@ jobs:
             --benchmark-min-rounds=5 \
             --benchmark-json=benchmark-results.json \
             $EXTRA_ARGS
+
       - name: upload .benchmarks/ for baseline capture
         if: github.event.inputs.save_baseline == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pytest-benchmark-baseline
           path: .benchmarks/Linux-CPython-3.12-64bit/
-          retention-days: 90
-      # TODO: once baselines are committed, replace the upload step with a compare step:
-      # - name: compare against committed baseline
-      #   run: |
-      #     pytest benchmarks/ --benchmark-only \
-      #       --benchmark-compare=.benchmarks/Linux-CPython-3.12-64bit/main \
-      #       --benchmark-compare-fail=min:25%
+          retention-days: 7
+
+      - name: compare against committed baseline
+        run: |
+          pytest benchmarks/ --benchmark-only \
+            --benchmark-compare=.benchmarks/Linux-CPython-3.12-64bit/baseline.json \
+        # --benchmark-compare-fail=min:25% # GitHub runner is a bit noisy, so we won't fail the workflow on benchmark regressions for now

@@ -29,22 +29,26 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-    "click", # ==8.1.7",
-    "numpy",
-    "numba",
-    "matplotlib",
-    "pandas",
-    "h5py",
-    "geopandas",
-    "shapely",
+    # Lower bounds reflect the minimum versions currently exercised by CI / uv.lock.
+    # Intentionally no upper bounds to avoid resolver pain unless a known incompatibility forces one.
+    "click>=8.1",
+    "numpy>=2.0",
+    "numba>=0.60",
+    "matplotlib>=3.9",
+    "pandas>=2.3",
+    "h5py>=3.14",
+    "geopandas>=1.0",
+    "shapely>=2.0",
     "uv>=0.10.5",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=6.0",
     "black",
     "flake8",
+    "interrogate>=1.7",
+    "pytest>=6.0",
+    "pytest-benchmark>=5.2.3",
     "tox",
     "tox-uv"
 ]
@@ -94,8 +98,11 @@ extend-exclude = ["static", "ci/templates"]
 ignore = [
     "RUF001", # ruff-specific rules ambiguous-unicode-character-string
     "RUF002", # ruff-specific rules ambiguous sigma looks like lowercase o
+    "RUF003", # ruff-specific rules "Comment contains ambiguous `×` (MULTIPLICATION SIGN)"
     "S101", # flake8-bandit assert
     "S308", # flake8-bandit suspicious-mark-safe-usage
+    "S603", # flake8-bandit subprocess-without-shell-equals-true
+    "S607", # flake8-bandit start-process-with-partial-path
     "E501", # pycodestyle line-too-long
 ]
 line-length = 140
@@ -187,3 +194,22 @@ replace = "/v{new_version}...main"
 filename = "docs/conf.py"
 search = 'version = release = "{current_version}"'
 replace = 'version = release = "{new_version}"'
+
+[tool.interrogate]
+# Docstring-coverage gate enforced in pre-commit (see .pre-commit-config.yaml).
+# Current coverage is 97.9%; the floor is set just below that so the build doesn't
+# flicker on noise but a regression of more than ~3% will fail.
+fail-under = 95
+ignore-init-method = true
+ignore-private = true
+ignore-magic = true
+ignore-property-decorators = true
+ignore-nested-functions = true
+verbose = 1
+quiet = false
+color = true
+
+[dependency-groups]
+dev = [
+    "pytest-benchmark>=5.2.3",
+]

@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from laser.core.migration import _sum_populations_as_close_or_closer
+from laser.core.migration import build_network
 from laser.core.migration import competing_destinations
 from laser.core.migration import distance
 from laser.core.migration import gravity
@@ -851,6 +853,343 @@ class TestsForOverflow(unittest.TestCase):
         assert np.all(r >= 0), "Radiation migration calculation (include_home=True) should not overflow and/or return negative values."
 
         return
+
+
+class TestMigrationVectorizationRegression(unittest.TestCase):
+    """Regression tests pinning the vectorized implementations of competing_destinations and distance.
+
+    Given an N-node spatial input, when the vectorized helpers run, then their output must
+    match an independent reference implemented in this test file using plain Python loops.
+
+    A failure here implies the vectorization in `migration.py` diverges from the original
+    semantics, which would silently break downstream calibrations and published-result
+    reproducibility.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(seed=20260514)
+        n = 8
+        cls.pops = rng.integers(10_000, 1_000_000, size=n).astype(np.float64)
+        cls.lat = rng.uniform(-60.0, 60.0, size=n)
+        cls.lon = rng.uniform(-150.0, 150.0, size=n)
+        cls.distances = distance(cls.lat, cls.lon)
+        return
+
+    @staticmethod
+    def _reference_distance(lat1, lon1, lat2, lon2):
+        """Loop-based reference Haversine; mirrors the prior implementation exactly."""
+        lat1 = np.radians(np.asarray(lat1).flatten())
+        lon1 = np.radians(np.asarray(lon1).flatten())
+        lat2 = np.radians(np.asarray(lat2).flatten())
+        lon2 = np.radians(np.asarray(lon2).flatten())
+        d = np.zeros((lat1.size, lat2.size))
+        for i in range(lat1.size):
+            dlat = lat2 - lat1[i]
+            dlon = lon2 - lon1[i]
+            d[i, :] = np.sin(dlat / 2) ** 2 + np.cos(lat1[i]) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+        return 2 * 6371.0 * np.arcsin(np.sqrt(d))
+
+    @staticmethod
+    def _reference_competing_destinations(pops, distances, k, a, b, c, delta):
+        """Loop-based reference for competing_destinations; mirrors the prior implementation exactly."""
+        pops = pops.astype(np.float64)
+        n = len(pops)
+        net = gravity(pops, distances, k=k, a=a, b=b, c=c)
+
+        distances1 = distances.copy().astype(np.float64)
+        np.fill_diagonal(distances1, 1)
+        comp = pops**b * distances1 ** (-1 * c)
+        np.fill_diagonal(comp, 0)
+        mysums = np.sum(comp, axis=1)
+
+        for i in range(n):
+            for j in range(n):
+                if j != i:
+                    net[i][j] = net[i][j] * (mysums[j] - comp[j][i]) ** delta
+        np.fill_diagonal(net, 0)
+        return net
+
+    def test_distance_matches_loop_reference(self):
+        """Given lat/lon vectors, when vectorized distance runs, then it matches the looped reference within float tolerance."""
+        actual = distance(self.lat, self.lon)
+        expected = self._reference_distance(self.lat, self.lon, self.lat, self.lon)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-9)
+
+    def test_distance_rectangular_matches_loop_reference(self):
+        """Given different-sized lat/lon vectors, when vectorized distance runs, then NxM output matches the looped reference."""
+        lat2 = self.lat[:4]
+        lon2 = self.lon[:4]
+        actual = distance(self.lat, self.lon, lat2, lon2)
+        expected = self._reference_distance(self.lat, self.lon, lat2, lon2)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-9)
+
+    def test_competing_destinations_matches_loop_reference(self):
+        """Given a multi-node scenario, when vectorized competing_destinations runs, then output equals the looped reference within float tolerance."""
+        k, a, b, c, delta = 0.01, 1.0, 1.0, 2.0, -0.1
+        actual = competing_destinations(self.pops, self.distances, k=k, a=a, b=b, c=c, delta=delta)
+        expected = self._reference_competing_destinations(self.pops, self.distances, k, a, b, c, delta)
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+    @staticmethod
+    def _reference_stouffer(pops, distances, k, a, b, include_home):
+        """Loop-based reference for stouffer; mirrors the pre-vectorization implementation exactly."""
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = np.zeros_like(distances)
+        sort_indices = np.argsort(distances, axis=1, kind="stable")
+        unsort_indices = np.argsort(sort_indices, axis=1)
+        for i in range(len(pops)):
+            sorted_pops = pops[sort_indices[i]]
+            cumulative = _sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            if not include_home:
+                cumulative = cumulative - sorted_pops[0]
+            network[i, 1:] = k * pops[i] ** a * (sorted_pops[1:] / cumulative[1:]) ** b
+        network = np.take_along_axis(network, unsort_indices, axis=1)
+        np.fill_diagonal(network, 0)
+        return network
+
+    @staticmethod
+    def _reference_radiation(pops, distances, k, include_home):
+        """Loop-based reference for radiation; mirrors the pre-vectorization implementation exactly."""
+        pops = pops.astype(np.float64)
+        distances = distances.astype(np.float64)
+        network = np.zeros_like(distances)
+        sort_indices = np.argsort(distances, axis=1, kind="stable")
+        unsort_indices = np.argsort(sort_indices, axis=1)
+        for i in range(len(pops)):
+            sorted_pops = pops[sort_indices[i]]
+            cumulative = _sum_populations_as_close_or_closer(sorted_pops, distances[i][sort_indices[i]])
+            if not include_home:
+                cumulative = cumulative - sorted_pops[0]
+            network[i] = k * pops[i] * sorted_pops / (pops[i] + cumulative) / (pops[i] + sorted_pops + cumulative)
+        network = np.take_along_axis(network, unsort_indices, axis=1)
+        np.fill_diagonal(network, 0)
+        return network
+
+    def test_stouffer_matches_loop_reference_include_home_false(self):
+        """Given a multi-node scenario, when vectorized stouffer(include_home=False) runs, then output equals the looped reference."""
+        k, a, b = 0.01, 1.0, 1.0
+        actual = stouffer(self.pops, self.distances, k=k, a=a, b=b, include_home=False)
+        expected = self._reference_stouffer(self.pops, self.distances, k, a, b, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_stouffer_matches_loop_reference_include_home_true(self):
+        """Given a multi-node scenario, when vectorized stouffer(include_home=True) runs, then output equals the looped reference."""
+        k, a, b = 0.01, 1.0, 1.0
+        actual = stouffer(self.pops, self.distances, k=k, a=a, b=b, include_home=True)
+        expected = self._reference_stouffer(self.pops, self.distances, k, a, b, include_home=True)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_radiation_matches_loop_reference_include_home_false(self):
+        """Given a multi-node scenario, when vectorized radiation(include_home=False) runs, then output equals the looped reference."""
+        actual = radiation(self.pops, self.distances, k=0.01, include_home=False)
+        expected = self._reference_radiation(self.pops, self.distances, k=0.01, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_radiation_matches_loop_reference_include_home_true(self):
+        """Given a multi-node scenario, when vectorized radiation(include_home=True) runs, then output equals the looped reference."""
+        actual = radiation(self.pops, self.distances, k=0.01, include_home=True)
+        expected = self._reference_radiation(self.pops, self.distances, k=0.01, include_home=True)
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+    def test_stouffer_handles_equidistant_destinations(self):
+        """Given equidistant destinations, when vectorized stouffer runs, then ties are handled identically to the loop reference."""
+        pops = np.array([100, 200, 300, 400], dtype=np.float64)
+        # Construct a symmetric distance matrix with multiple equidistant pairs from each source.
+        distances = np.array(
+            [
+                [0.0, 1.0, 1.0, 2.0],
+                [1.0, 0.0, 2.0, 1.0],
+                [1.0, 2.0, 0.0, 1.0],
+                [2.0, 1.0, 1.0, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        for include_home in (False, True):
+            actual = stouffer(pops, distances, k=0.01, a=1.0, b=1.0, include_home=include_home)
+            expected = self._reference_stouffer(pops, distances, 0.01, 1.0, 1.0, include_home=include_home)
+            np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-15)
+
+
+class TestBuildNetwork(unittest.TestCase):
+    """Tests for the build_network() composition helper.
+
+    `build_network()` is a thin wrapper that runs a chosen migration model and,
+    optionally, normalizes rows so no row sum exceeds `max_rowsum`. These tests
+    pin both halves of that contract: bit-exact passthrough when normalization
+    is skipped, and equivalence to the explicit compose `row_normalizer(model_fn(...))`
+    when it isn't. They also confirm that `**model_params` reaches the underlying
+    model without being dropped, renamed, or shadowed by `max_rowsum`.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(seed=20260526)
+        n = 6
+        cls.pops = rng.integers(10_000, 500_000, size=n).astype(np.float64)
+        lat = rng.uniform(-60.0, 60.0, size=n)
+        lon = rng.uniform(-150.0, 150.0, size=n)
+        cls.distances = distance(lat, lon)
+        return
+
+    def test_passthrough_without_max_rowsum_gravity(self):
+        """Given a gravity model and no max_rowsum, when build_network runs, then output is bit-exact to gravity() directly.
+
+        Failure implies build_network is silently transforming model output even
+        when no normalization was requested — which would corrupt downstream
+        calibrations that depend on the raw model magnitudes.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        expected = gravity(self.pops, self.distances, **params)
+        actual = build_network(gravity, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_passthrough_without_max_rowsum_radiation(self):
+        """Given the radiation model and no max_rowsum, when build_network runs, then output is bit-exact to radiation() directly.
+
+        Confirms the passthrough contract is not gravity-specific and survives a
+        model with a different parameter shape (no a/b/c exponents, with include_home).
+        """
+        expected = radiation(self.pops, self.distances, k=0.1, include_home=False)
+        actual = build_network(radiation, self.pops, self.distances, k=0.1, include_home=False)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_applies_row_normalization_when_max_rowsum_given(self):
+        """Given max_rowsum, when build_network runs, then every row sum is at most max_rowsum.
+
+        Failure means the normalization step was skipped or applied with the
+        wrong bound — silently breaking the contract that downstream agent
+        movers depend on (per-row probabilities must not exceed the cap).
+        """
+        max_rowsum = 0.05
+        network = build_network(
+            gravity,
+            self.pops,
+            self.distances,
+            max_rowsum=max_rowsum,
+            k=0.1,
+            a=0.5,
+            b=1.0,
+            c=2.0,
+        )
+        # row_normalizer promotes to float32, so we allow a small numerical slack on the bound.
+        rowsums = network.sum(axis=1)
+        assert np.all(rowsums <= max_rowsum + 1e-6), f"row sums exceed max_rowsum={max_rowsum}: {rowsums}"
+
+    def test_equivalent_to_explicit_compose_with_max_rowsum(self):
+        """Given max_rowsum, when build_network runs, then output equals row_normalizer(model_fn(...), max_rowsum).
+
+        Pins the composition order: model first, then normalization. If the helper
+        ever silently reorders these steps or substitutes a different normalization,
+        this test will catch it before downstream numerical regressions appear.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        max_rowsum = 0.05
+        expected = row_normalizer(gravity(self.pops, self.distances, **params), max_rowsum)
+        actual = build_network(gravity, self.pops, self.distances, max_rowsum=max_rowsum, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_forwards_kwargs_to_model_fn(self):
+        """Given keyword model parameters, when build_network runs, then every kwarg reaches the model unchanged.
+
+        Verifies that **model_params forwarding does not drop, rename, or shadow
+        any parameter (in particular, that max_rowsum is excluded from the
+        forwarded kwargs and no other collision occurs). Failure here would
+        mean models silently fall back to defaults even when the caller passed
+        explicit values.
+        """
+        received = {}
+
+        def fake_model(pops, distances, **params):
+            received.update(params)
+            return np.zeros_like(distances, dtype=np.float64)
+
+        build_network(
+            fake_model,
+            self.pops,
+            self.distances,
+            max_rowsum=None,  # must NOT appear in forwarded kwargs
+            alpha=0.25,
+            beta="forwarded",
+            gamma=42,
+        )
+        assert received == {"alpha": 0.25, "beta": "forwarded", "gamma": 42}, f"forwarded kwargs differ from expected: {received}"
+
+    def test_passes_pops_and_distances_positionally_to_model_fn(self):
+        """Given a model_fn, when build_network runs, then it is invoked with (pops, distances) positionally.
+
+        The wrapper's contract is that the chosen model_fn receives populations
+        and the distance matrix as its first two positional arguments. Failure
+        here would mean callers can't use plain function objects as `model_fn`
+        without adapting their signatures.
+        """
+        captured = {}
+
+        def fake_model(pops, distances, **params):
+            captured["pops"] = pops
+            captured["distances"] = distances
+            return np.zeros_like(distances, dtype=np.float64)
+
+        build_network(fake_model, self.pops, self.distances)
+        assert captured["pops"] is self.pops, "pops was not forwarded as the first positional argument"
+        assert captured["distances"] is self.distances, "distances was not forwarded as the second positional argument"
+
+    def test_works_with_competing_destinations(self):
+        """Given competing_destinations as the model, when build_network runs, then output is bit-exact to competing_destinations() directly.
+
+        Confirms build_network is model-agnostic across all four published
+        migration models in this module — not just gravity.
+        """
+        params = {"k": 1.0, "a": 0.5, "b": 1.0, "c": 2.0, "delta": 0.5}
+        expected = competing_destinations(self.pops, self.distances, **params)
+        actual = build_network(competing_destinations, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_works_with_stouffer(self):
+        """Given stouffer as the model, when build_network runs, then output is bit-exact to stouffer() directly.
+
+        Stouffer takes `include_home` (a bool) rather than only numeric
+        exponents, so this also exercises kwarg forwarding for a non-numeric
+        keyword.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "include_home": False}
+        expected = stouffer(self.pops, self.distances, **params)
+        actual = build_network(stouffer, self.pops, self.distances, **params)
+        np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_max_rowsum_none_is_default(self):
+        """Given build_network called with no max_rowsum, when it runs, then output equals the same call with max_rowsum=None.
+
+        Pins the default value of the keyword-only argument. A future signature
+        change that altered the default (e.g. to 1.0) would silently rescale
+        every returned network — this test catches that regression.
+        """
+        params = {"k": 0.1, "a": 0.5, "b": 1.0, "c": 2.0}
+        with_default = build_network(gravity, self.pops, self.distances, **params)
+        with_explicit_none = build_network(gravity, self.pops, self.distances, max_rowsum=None, **params)
+        np.testing.assert_allclose(with_default, with_explicit_none, rtol=0.0, atol=0.0)
+
+    def test_invalid_max_rowsum_raises_via_row_normalizer(self):
+        """Given an out-of-range max_rowsum, when build_network runs, then row_normalizer's validation error propagates.
+
+        build_network itself adds no validation around max_rowsum; instead it
+        relies on row_normalizer to reject out-of-range values. This test pins
+        that delegation: if a future refactor swallows the error or pre-clamps
+        the value, downstream callers would silently see incorrect behavior
+        instead of an actionable exception.
+        """
+        with pytest.raises(ValueError, match=re.escape("max_rowsum must be in [0, 1]")):
+            build_network(
+                gravity,
+                self.pops,
+                self.distances,
+                max_rowsum=1.5,
+                k=0.1,
+                a=0.5,
+                b=1.0,
+                c=2.0,
+            )
 
 
 if __name__ == "__main__":

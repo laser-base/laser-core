@@ -669,3 +669,73 @@ class TestLaserFrame(unittest.TestCase):
             lf.age = np.arange(10)
 
         return
+
+    def test_from_properties_scalar_only(self):
+        """Given bare-dtype specs, when `from_properties` runs, then it registers scalar properties with the right dtype."""
+        frame = LaserFrame.from_properties(capacity=100, age=np.int32, infected=bool)
+        assert frame.capacity == 100
+        assert frame.count == 100  # default initial_count = -1 → capacity
+        assert frame._age.shape == (100,)
+        assert frame._age.dtype == np.int32
+        assert frame._infected.shape == (100,)
+        assert frame._infected.dtype == np.bool_
+
+    def test_from_properties_vector(self):
+        """Given a (length, dtype) tuple spec, when `from_properties` runs, then it registers a vector property."""
+        frame = LaserFrame.from_properties(capacity=100, position=(3, np.float32))
+        # Vector backing is (length, capacity).
+        assert frame._position.shape == (3, 100)
+        assert frame._position.dtype == np.float32
+
+    def test_from_properties_array(self):
+        """Given a (shape_tuple, dtype) spec, when `from_properties` runs, then it registers an array property."""
+        frame = LaserFrame.from_properties(capacity=100, history=((10, 5), np.float64))
+        # Array property is independent of capacity; shape is exactly as specified.
+        assert frame.history.shape == (10, 5)
+        assert frame.history.dtype == np.float64
+
+    def test_from_properties_mixed(self):
+        """Given a mix of scalar / vector / array specs, when `from_properties` runs, then all three property kinds are registered correctly."""
+        frame = LaserFrame.from_properties(
+            capacity=50,
+            initial_count=10,
+            age=np.int32,
+            position=(2, np.float32),
+            history=((4,), np.float64),
+        )
+        assert frame.count == 10
+        assert frame._age.shape == (50,)
+        assert frame._position.shape == (2, 50)
+        assert frame.history.shape == (4,)
+
+    def test_from_properties_honors_initial_count(self):
+        """Given initial_count, when `from_properties` runs, then the returned frame's `count` reflects it."""
+        frame = LaserFrame.from_properties(capacity=100, initial_count=25, age=np.int32)
+        assert frame.capacity == 100
+        assert frame.count == 25
+
+    def test_from_properties_rejects_three_tuple_spec(self):
+        """Given a malformed 3-tuple spec, when `from_properties` runs, then TypeError is raised."""
+        with pytest.raises(TypeError, match=r"spec tuple must have length 2"):
+            LaserFrame.from_properties(capacity=100, bad=(1, np.int32, "extra"))
+
+    def test_from_properties_rejects_bad_spec_first_element(self):
+        """Given a 2-tuple whose first element is neither int nor tuple, when `from_properties` runs, then TypeError is raised."""
+        with pytest.raises(TypeError, match=r"spec\[0\] must be an int.*or tuple"):
+            LaserFrame.from_properties(capacity=100, bad=("not-a-shape", np.int32))
+
+    def test_from_properties_equivalent_to_imperative(self):
+        """Given identical specs, when `from_properties` and the imperative API are both used, then the resulting frames have identical property layouts."""
+        frame_a = LaserFrame.from_properties(
+            capacity=64,
+            age=np.int32,
+            position=(2, np.float32),
+        )
+        frame_b = LaserFrame(capacity=64)
+        frame_b.add_scalar_property("age", dtype=np.int32)
+        frame_b.add_vector_property("position", length=2, dtype=np.float32)
+        assert frame_a._age.shape == frame_b._age.shape
+        assert frame_a._age.dtype == frame_b._age.dtype
+        assert frame_a._position.shape == frame_b._position.shape
+        assert frame_a._position.dtype == frame_b._position.dtype
+        assert frame_a.capacity == frame_b.capacity

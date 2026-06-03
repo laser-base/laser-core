@@ -278,7 +278,7 @@ class TestGridUtilityFunction(unittest.TestCase):
         gdf = grid(M=M, N=N, node_size_degs=0.1, population_fn=lambda r, c: 100, states=states)
         # Too many people: [S, E, I, R] = [50, 50, 50, 50] = 200 > 100
         initial = np.tile([50, 50, 50, 50], (M * N, 1))
-        with pytest.raises(AssertionError, match="Sum of initial states does not equal population at some nodes"):
+        with pytest.raises(ValueError, match="Sum of initial states does not equal population at some nodes"):
             initialize_population(gdf.copy(), initial, states=states)
 
     def test_initialize_population_fractions_sum_gt_one(self):

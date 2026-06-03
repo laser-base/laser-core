@@ -24,6 +24,16 @@ import numpy as np
 
 
 class KaplanMeierEstimator:
+    """Kaplan-Meier-based predictor for year and age at death.
+
+    Constructed from a cumulative-deaths source (per-year counts), this class draws
+    predicted years and days of death for a cohort of currently-living individuals,
+    conditional on having survived to their current age. The underlying kernels use
+    Numba parallel execution and are suitable for cohorts of millions of agents.
+
+    See the module docstring and `docs/kmestimator.rst` for the full reference.
+    """
+
     def __init__(self, source: np.ndarray | list | Path | str) -> None:
         """
         Initializes the KMEstimator with the given source data.
@@ -78,7 +88,11 @@ class KaplanMeierEstimator:
         """
         return self._cumulative_deaths[1:]  # exclude the leading zero
 
-    def sample(self, current: np.ndarray[Any, np.dtype[np.integer]], max_index: np.uint32 = None) -> np.ndarray:
+    def sample(
+        self,
+        current: np.ndarray[Any, np.dtype[np.integer]],
+        max_index: np.uint32 = None,
+    ) -> np.ndarray:
         """
         Similar to `predict_year_of_death`, but operates on indices rather than years.
         This method predicts the expiration (death) index for each individual, given their current index.
@@ -102,7 +116,11 @@ class KaplanMeierEstimator:
 
         return predictions
 
-    def predict_year_of_death(self, ages_years: np.ndarray[Any, np.dtype[np.integer]], max_year: np.uint32 = None) -> np.ndarray:
+    def predict_year_of_death(
+        self,
+        ages_years: np.ndarray[Any, np.dtype[np.integer]],
+        max_year: np.uint32 = None,
+    ) -> np.ndarray:
         """
         Calculate the predicted year of death based on the given ages in years.
 
@@ -133,7 +151,11 @@ class KaplanMeierEstimator:
 
         return year_of_death
 
-    def predict_age_at_death(self, ages_days: np.ndarray[Any, np.dtype[np.integer]], max_year: np.uint32 = None) -> np.ndarray:
+    def predict_age_at_death(
+        self,
+        ages_days: np.ndarray[Any, np.dtype[np.integer]],
+        max_year: np.uint32 = None,
+    ) -> np.ndarray:
         """
         Calculate the predicted age at death (in days) based on the given ages in days.
 
@@ -212,6 +234,24 @@ def _pyod(ages_years: np.ndarray, cumulative_deaths: np.ndarray, max_year: np.ui
 
 @nb.njit(parallel=True, cache=True)
 def _pdod(age_in_days: np.ndarray, year_of_death: np.ndarray, day_of_death: np.ndarray):  # pragma: no cover
+    """Predict the day-of-year of death for each individual (Numba parallel kernel).
+
+    For individuals whose current age (in days) places them before their predicted
+    year of death, a uniformly-random day in `[0, 365)` is chosen. For individuals
+    already in their year of death, the day is uniformly chosen from `[age_doy, 365)`
+    so the predicted day cannot precede the current day.
+
+    Args:
+        age_in_days (np.ndarray): Current ages of individuals in days. Integer or float dtype.
+        year_of_death (np.ndarray of np.uint16): Predicted year of death per individual,
+            as produced by [`_pyod`][laser.core.demographics.kmestimator._pyod].
+        day_of_death (np.ndarray): Output buffer; populated in-place with the predicted
+            day-of-year of death (`0`–`364`). Must match the shape and integer family of
+            `age_in_days`.
+
+    Returns:
+        None: `day_of_death` is filled in-place.
+    """
     n = age_in_days.shape[0]
     for i in nb.prange(n):
         age_days = np.uint32(age_in_days[i])

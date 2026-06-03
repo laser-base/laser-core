@@ -39,7 +39,8 @@ wheelhouse
 pip-log.txt
 
 # Unit test / coverage reports
-.benchmarks
+.benchmarks/*
+!.benchmarks/Linux-CPython-3.12-64bit/
 .coverage
 .coverage.*
 .pytest

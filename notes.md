@@ -128,3 +128,48 @@ PRNG state appears to use between 16 and 268 bytes depending on the algorithm. C
 ### Compose Rather than Configure
 
 Choose the necessary components for the model and for reporting rather than enabling/disabling features from a large feature set.
+
+## Migration module — historical implementation notes
+
+Moved here from the top of `docs/migration.rst` so the user-facing reference page
+stays focused on the model semantics. These are the original developer-side
+considerations from when the migration module was written; most are now resolved
+in the implementation:
+
+- **Vectorization vs. loops.** "I'm aiming to do most of this with element-by-element
+  numpy functions when I can, though loops would probably translate more obviously to
+  numba/c. I don't expect that computation of these matrices will be a substantial
+  part of overall computational spend on a model either way."
+  **Status:** all four migration models and `distance` are now fully vectorized
+  NumPy; see `docs/migration.rst` Performance characteristics for the matrix.
+
+- **Input validation.** "I have not tested nor written code to enforce conditions
+  on the inputs. This should be done — e.g., populations coming in as integers can
+  present wrapping issues when we start exponentiating and multiplying them (signed
+  integers in particular can be a problem because you may wrap into negative numbers)."
+  **Status:** `_sanity_checks` (and the shared `_validation` helpers) now validate
+  inputs at every public migration entry point, raising `TypeError` / `ValueError`.
+  Populations are promoted to `np.float64` inside each model before exponentiation
+  to avoid integer overflow.
+
+- **Numerical precision.** "It's also worth investigating whether using large
+  floats makes sense when computing these formulas, or whether we should put
+  operations in a specific order. This is because depending on the choice of
+  someone's metapop network and spatial model parameters, and the order of
+  computations, we can end up multiplying, dividing, summing over numbers that
+  can be across really different scales, so weirdness might happen with loss
+  of precision?"
+  **Status:** still a known concern at large `N` × extreme parameter values;
+  the bit-equivalence regression tests in `tests/test_migration.py` lock the
+  current ordering against a loop-based reference within `rtol=1e-10`.
+
+- **Zero distances.** "Distances on the diagonal of the distance matrix should
+  always be 0. We should check for 0s elsewhere and throw an error. It's also
+  nice to be able to use numpy element-by-element math without constant
+  div-by-zero errors for the diagonal elements, so maybe each function should
+  start by adding epsilon to the diagonal of the distance matrix? We're going
+  to zero out those terms in the network anyway..."
+  **Status:** each migration function copies the distance matrix and sets the
+  diagonal to 1 before exponentiating, then zeroes the network diagonal at the
+  end. Off-diagonal zeros are still the user's responsibility (documented in
+  the "Numerical edge cases to watch for" section of `docs/migration.rst`).

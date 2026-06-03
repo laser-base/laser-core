@@ -8,16 +8,40 @@ import numpy as np
 
 
 class SortedQueue:
-    """
-    A sorted (priority) queue implemented using NumPy arrays and sped-up with Numba.
+    """Fixed-capacity priority queue over indices into an external value array.
 
-    Using the algorithm from the Python heapq module.
+    The queue stores `np.uint32` *indices* into a user-supplied `values` array; pushes
+    and pops compare via `values[index]` so the underlying value array is never copied,
+    only indexed. This is the data structure LASER models use to schedule per-agent
+    events (deaths, transitions, exogenous arrivals) without per-event allocation —
+    designed for cohorts of tens to hundreds of millions of agents.
 
-    __init__ with an existing array of sorting values
+    The implementation mirrors the algorithm in CPython's `heapq` module, with the
+    sift-forward and sift-backward kernels compiled per `values.dtype` via Numba
+    `@nb.njit` (cached through `lru_cache`).
 
-    __push__ with an index into sorting values
+    Attributes:
+        indices (np.ndarray of np.uint32): Backing array of length `capacity` holding
+            heap-ordered indices into `values`. Only the first `size` entries are valid.
+        values (np.ndarray): The external array of sort keys, supplied at construction
+            and aliased (not copied). The queue assumes these values do not move; if you
+            mutate `values[i]` while `i` is in the queue, you must re-heapify yourself.
+        size (np.uint32): Number of indices currently in the queue (`0 <= size <= capacity`).
 
-    __pop__ returns the index of the lowest sorting value and its value
+    Raises:
+        IndexError: If `push` is called when `size == capacity`, or if `pop` is called
+            when `size == 0`.
+
+    **Example**:
+
+        import numpy as np
+        from laser.core import SortedQueue
+
+        priorities = np.array([5.0, 1.0, 3.0, 7.0], dtype=np.float32)
+        sq = SortedQueue(capacity=4, values=priorities)
+        for i in range(4):
+            sq.push(i)
+        idx, val = sq.popiv()  # idx=1, val=1.0 (smallest)
     """
 
     # https://github.com/python/cpython/blob/5592399313c963c110280a7c98de974889e1d353/Modules/_heapqmodule.c
