@@ -118,6 +118,41 @@ class TestUtilityFunctions(unittest.TestCase):
 
         return
 
+    def test_calc_capacity_rejects_negative_initial_pop(self):
+        """Given an ``initial_pop`` array containing one or more negative values,
+        when ``calc_capacity`` is called,
+        then it raises ``AssertionError`` and the message identifies the offending value(s).
+
+        Failure of this test means a caller could silently pass nonsensical (negative) initial
+        populations through ``calc_capacity``. The downstream estimate would then propagate the
+        negative product, get rounded, cast to ``uint32`` (wrapping into a huge positive number),
+        and corrupt the ``LaserFrame`` capacity allocated from it.
+        """
+        # Same simple two-node birthrate matrix used by the other calc_capacity tests.
+        nticks = 365
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 30.0, dtype=np.float32)
+
+        # Single negative value among otherwise-valid populations.
+        initial_pop_one_negative = np.array([10_000, -1], dtype=np.int64)
+        with pytest.raises(AssertionError, match=r"Initial populations must be >= 0"):
+            calc_capacity(birthrates, initial_pop_one_negative)
+
+        # Multiple negative values: assertion should still fire, and the message should
+        # mention at least one of them so a developer can find the bad entry quickly.
+        initial_pop_multi_negative = np.array([-5, -42], dtype=np.int64)
+        with pytest.raises(AssertionError, match=r"Initial populations must be >= 0.*(-5|-42)"):
+            calc_capacity(birthrates, initial_pop_multi_negative)
+
+        # Sanity: zero is allowed (a node with no initial population is a legitimate edge case).
+        initial_pop_zero_ok = np.array([0, 10_000], dtype=np.int64)
+        estimates = calc_capacity(birthrates, initial_pop_zero_ok)
+        assert estimates.dtype == np.uint32
+        assert estimates[0] == 0, f"Zero initial pop should stay zero, got {estimates[0]}"
+        assert estimates[1] > 10_000, f"Positive initial pop should still grow, got {estimates[1]}"
+
+        return
+
 
 class TestGridUtilityFunction(unittest.TestCase):
     def check_grid_validity(self, gdf, M, N, node_size_degs=0.1, origin_x=0, origin_y=0):

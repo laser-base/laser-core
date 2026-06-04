@@ -202,7 +202,7 @@ def _load_un_member_states_2020():
 def _available_memory_bytes():
     """Best-effort lookup of available RAM. Returns None if it cannot be determined."""
     try:
-        import psutil  # noqa: PLC0415 — optional dep, lazily imported only for gating
+        import psutil  # — optional dep, lazily imported only for gating
     except ImportError:
         return None
     return psutil.virtual_memory().available
@@ -254,8 +254,7 @@ def test_un_member_states_2020_laserframe_exceeds_uint32_max():
     uint32_max = int(np.iinfo(np.uint32).max)
     total_pop = int(pops.sum())
     assert total_pop > uint32_max, (
-        f"Combined 2020 population ({total_pop:_}) should exceed uint32 max ({uint32_max:_}); "
-        "the test is moot if it does not."
+        f"Combined 2020 population ({total_pop:_}) should exceed uint32 max ({uint32_max:_}); " "the test is moot if it does not."
     )
 
     frame = LaserFrame(capacity=total_pop, initial_count=total_pop)
@@ -273,7 +272,7 @@ def test_un_member_states_2020_laserframe_exceeds_uint32_max():
 
     # Verify 64-bit indexing across the uint32 boundary — write/read at index uint32_max + 1
     # to confirm we are NOT silently wrapping into the lower 4.29 G of the array.
-    sentinel_index = uint32_max + 1
+    sentinel_index = uint32_max + 13
     assert sentinel_index < total_pop, "Sanity: sentinel index must lie inside the frame."
 
     frame.age[sentinel_index] = 42
@@ -282,9 +281,9 @@ def test_un_member_states_2020_laserframe_exceeds_uint32_max():
     assert int(frame.state[sentinel_index]) == 7
 
     # The corresponding index in the LOWER half should NOT have been touched by the write.
-    lower_index = sentinel_index - 2**32  # would be 1 if uint32 wrap occurred
-    assert int(frame.age[lower_index]) == 0, "Write at uint32_max+1 must not wrap into the lower half (uint32 overflow)."
-    assert int(frame.state[lower_index]) == 0, "Write at uint32_max+1 must not wrap into the lower half (uint32 overflow)."
+    lower_index = sentinel_index - 2**32  # would be 12 if uint32 wrap occurred
+    assert int(frame.age[lower_index]) == 0, "Write at uint32_max+13 must not wrap into the lower half (uint32 overflow)."
+    assert int(frame.state[lower_index]) == 0, "Write at uint32_max+13 must not wrap into the lower half (uint32 overflow)."
 
 
 class TestLaserFrame(unittest.TestCase):

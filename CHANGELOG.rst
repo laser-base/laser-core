@@ -13,6 +13,10 @@ Unreleased
   UN population estimates for all 193 member states (one node per country). The
   test allocates ~24 GiB of property storage and self-skips on machines without
   sufficient free RAM. New fixture ``tests/data/un_member_states_2020.csv``.
+* Add ``test_calc_capacity_rejects_negative_initial_pop`` covering the
+  ``initial_pop >= 0`` validation in ``calc_capacity()`` (single negative,
+  multiple negatives with offending values surfaced in the message, and a
+  zero-allowed sanity case).
 
 1.0.2 (2026-05-19)
 ------------------

@@ -35,6 +35,9 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     # Validate birthrates shape against initial_pop shape
     _, nnodes = birthrates.shape
     assert len(initial_pop) == nnodes, f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match"
+    assert np.all(
+        initial_pop >= 0
+    ), f"Initial populations must be >= 0. Found {','.join(map(str, initial_pop[np.where(initial_pop < 0)]))} in initial_pop"
 
     # Validate birthrates values, must be >= 0 and <= 100
     assert np.all(birthrates >= 0.0), "All birthrate values must be non-negative"
