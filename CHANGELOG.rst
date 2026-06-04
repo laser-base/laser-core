@@ -113,9 +113,9 @@ Unreleased
 * Add save_snapshot and load_snapshot functionality
 * Add additional examples for PropertySet operators
 * Improve PropertySet functionality:
-  - Update += to only accept new keys
-  - Add <<= to update existing keys
-  - Add |= to add or update keys
+  - Update ``+=`` to only accept new keys
+  - Add ``<<=`` to update existing keys
+  - Add ``|=`` to add or update keys
 * Fix overflow in migration matrix calculations
 * Update row_normalizer() to return float32
 * Update calibration documentation

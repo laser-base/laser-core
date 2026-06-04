@@ -1,11 +1,11 @@
 name: benchmarks
 
 on:
-  pull_request:
-    paths:
-      - "src/laser/core/**"
-      - "benchmarks/**"
-      - ".github/workflows/benchmarks.yml"
+  # pull_request:
+  #   paths:
+  #     - "src/laser/core/**"
+  #     - "benchmarks/**"
+  #     - ".github/workflows/benchmarks.yml"
   workflow_dispatch:
     inputs:
       save_baseline:
