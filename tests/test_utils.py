@@ -54,6 +54,7 @@ class TestUtilityFunctions(unittest.TestCase):
         birthrates = np.broadcast_to(cbr[None, :], (NTICKS, len(scenario)))  # broadcast (nnodes,) to (nticks, nnodes)
 
         per_node_extrapolation = calc_capacity(birthrates, scenario.population)
+        assert per_node_extrapolation.dtype == np.uint32, f"Expected uint32 dtype, got {per_node_extrapolation.dtype}"
         estimate = per_node_extrapolation.sum()
 
         assert estimate > scenario.population.sum(), f"Estimate {estimate} not greater than population {scenario.population.sum()}"
@@ -83,6 +84,37 @@ class TestUtilityFunctions(unittest.TestCase):
             assert np.all(
                 safer > estimate
             ), f"Estimate with safety factor 2.0 \n{safer}\n not greater than estimate with safety factor 1.0 \n{estimate}"
+
+        return
+
+    def test_calc_capacity_clamps_to_uint32_max(self):
+        """Given per-node populations whose projected growth exceeds 2**32 - 1,
+        when calc_capacity is called,
+        then the overflowing entries are clamped to uint32 max and below-cap entries are unchanged.
+
+        Failure indicates calc_capacity either wraps around (silent overflow into a small value)
+        or fails to cap, both of which would propagate corrupt capacities into LaserFrame
+        allocations.
+        """
+        uint32_max = np.iinfo(np.uint32).max  # 4_294_967_295
+
+        # Two nodes: the first would project well above uint32_max under any positive growth;
+        # the second is small enough that its projection stays comfortably below the cap.
+        # NOTE: passing initial_pop as int64 here because uint32_max + small growth overflows
+        # int32 -- the cap-and-cast is exactly the behavior under test.
+        initial_pop = np.array([uint32_max, 1_000], dtype=np.int64)
+
+        # 3 years of CBR=35 at every step; modest growth that pushes node-0 over the cap.
+        nticks = 3 * 365
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 35.0, dtype=np.float32)
+
+        estimates = calc_capacity(birthrates, initial_pop)
+
+        assert estimates.dtype == np.uint32, f"Expected uint32 dtype, got {estimates.dtype}"
+        assert estimates[0] == uint32_max, f"Overflowing entry should clamp to {uint32_max}, got {estimates[0]}"
+        assert estimates[1] < uint32_max, f"Below-cap entry should not clamp, got {estimates[1]}"
+        assert estimates[1] > initial_pop[1], f"Below-cap entry should grow above initial pop, got {estimates[1]}"
 
         return
 

@@ -36,6 +36,7 @@ Usage:
     Run this module with a Python interpreter to execute the unit tests.
 """
 
+import csv
 import re
 import tempfile
 import unittest
@@ -184,6 +185,106 @@ def test_loaded_capacity_matches_expected_growth_multi_node(nnodes):
 
     finally:
         Path(path).unlink()
+
+
+def _load_un_member_states_2020():
+    """Read tests/data/un_member_states_2020.csv into parallel name/population lists."""
+    csv_path = Path(__file__).parent / "data" / "un_member_states_2020.csv"
+    with csv_path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.reader(fh)
+        next(reader)  # skip header
+        rows = [(name, int(pop)) for name, pop in reader]
+    names = [r[0] for r in rows]
+    pops = np.array([r[1] for r in rows], dtype=np.int64)
+    return names, pops
+
+
+def _available_memory_bytes():
+    """Best-effort lookup of available RAM. Returns None if it cannot be determined."""
+    try:
+        import psutil  # noqa: PLC0415 — optional dep, lazily imported only for gating
+    except ImportError:
+        return None
+    return psutil.virtual_memory().available
+
+
+# Memory budget: capacity * (sizeof(uint16 age) + sizeof(uint8 state)) ≈ 3 bytes/agent.
+# For ~7.84e9 agents that's ~23.5 GB just for the property arrays. We require a
+# comfortable headroom for Python/NumPy overhead and the OS — skip below ~25 GB free.
+_UN_2020_REQUIRED_FREE_BYTES = 25 * 1024**3
+
+
+@pytest.mark.skipif(
+    (_available_memory_bytes() or 0) < _UN_2020_REQUIRED_FREE_BYTES,
+    reason=(
+        f"Test requires ~{_UN_2020_REQUIRED_FREE_BYTES / 1024**3:.0f} GiB free RAM to allocate a LaserFrame "
+        "with more than uint32.max agents (age uint16 + state uint8 across all UN 2020 populations)."
+    ),
+)
+def test_un_member_states_2020_laserframe_exceeds_uint32_max():
+    """Build a LaserFrame sized for the combined 2020 populations of all 193 UN member states.
+
+    Given:
+        The 2020 UN population estimates for all 193 UN member states (one node per country),
+        whose sum exceeds ``np.iinfo(np.uint32).max`` (≈ 4.29 × 10^9 agents).
+    When:
+        We construct a ``LaserFrame`` with ``capacity`` equal to that total and add the
+        bare-bones per-agent properties ``age`` (``uint16``) and ``state`` (``uint8``).
+    Then:
+        - The frame's ``count`` and ``capacity`` both exceed ``uint32.max``.
+        - The ``age`` and ``state`` property arrays have the expected dtypes and span the
+          full active range (shape ``(count,)``).
+        - Indexing across the uint32 boundary works (we read and write a single agent
+          located at index ``uint32.max + 1`` to confirm the underlying NumPy storage uses
+          64-bit indexing under the hood).
+
+    Failure of this test indicates LaserFrame cannot safely handle agent counts above
+    ``2**32 - 1`` — a regression that would break global-scale or large-region
+    simulations (e.g. continent-wide or world-wide scenarios).
+
+    Note:
+        This test allocates ~23-24 GiB of NumPy arrays and is skipped automatically on
+        machines without sufficient free RAM (see ``_UN_2020_REQUIRED_FREE_BYTES``).
+    """
+    names, pops = _load_un_member_states_2020()
+
+    assert len(names) == 193, f"Expected 193 UN member states, got {len(names)}"
+    assert len(set(names)) == 193, "UN member state names must be unique"
+
+    uint32_max = int(np.iinfo(np.uint32).max)
+    total_pop = int(pops.sum())
+    assert total_pop > uint32_max, (
+        f"Combined 2020 population ({total_pop:_}) should exceed uint32 max ({uint32_max:_}); "
+        "the test is moot if it does not."
+    )
+
+    frame = LaserFrame(capacity=total_pop, initial_count=total_pop)
+    frame.add_scalar_property("age", dtype=np.uint16, default=0)
+    frame.add_scalar_property("state", dtype=np.uint8, default=0)
+
+    assert frame.capacity == total_pop
+    assert frame.count == total_pop
+    assert frame.count > uint32_max, "Frame count must exceed uint32 max for this test to be meaningful."
+    assert frame.age.dtype == np.uint16, f"Expected uint16 age dtype, got {frame.age.dtype}"
+    assert frame.state.dtype == np.uint8, f"Expected uint8 state dtype, got {frame.state.dtype}"
+    # LaserFrame returns properties sliced to [0:count]; with count == capacity that's the full backing array.
+    assert frame.age.shape == (total_pop,)
+    assert frame.state.shape == (total_pop,)
+
+    # Verify 64-bit indexing across the uint32 boundary — write/read at index uint32_max + 1
+    # to confirm we are NOT silently wrapping into the lower 4.29 G of the array.
+    sentinel_index = uint32_max + 1
+    assert sentinel_index < total_pop, "Sanity: sentinel index must lie inside the frame."
+
+    frame.age[sentinel_index] = 42
+    frame.state[sentinel_index] = 7
+    assert int(frame.age[sentinel_index]) == 42
+    assert int(frame.state[sentinel_index]) == 7
+
+    # The corresponding index in the LOWER half should NOT have been touched by the write.
+    lower_index = sentinel_index - 2**32  # would be 1 if uint32 wrap occurred
+    assert int(frame.age[lower_index]) == 0, "Write at uint32_max+1 must not wrap into the lower half (uint32 overflow)."
+    assert int(frame.state[lower_index]) == 0, "Write at uint32_max+1 must not wrap into the lower half (uint32 overflow)."
 
 
 class TestLaserFrame(unittest.TestCase):

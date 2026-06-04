@@ -43,6 +43,18 @@ Model Class
 
 Code for VitalDynamicsModel
 ---------------------------
+
+.. note::
+
+   ``calc_capacity`` returns a 1-D ``numpy.uint32`` array of per-node capacity
+   estimates. Any per-node estimate that exceeds the maximum representable
+   ``uint32`` value (``2**32 - 1`` ≈ 4.29 × 10\ :sup:`9`) is clamped to that
+   maximum *before* the cast, so the returned array never silently overflows or
+   wraps around. For scenarios with very large per-node populations (a single
+   node modelling billions of agents), be aware that the returned capacity may
+   underestimate the true growth — split the population across nodes or use a
+   wider integer container yourself if you need the full count.
+
 .. code-block:: python
 
    class VitalDynamicsModel:
