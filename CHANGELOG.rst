@@ -1,6 +1,45 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+* ``calc_capacity()`` now returns a ``uint32`` array (previously ``int32``) and
+  clamps per-node estimates that exceed ``2**32 - 1`` to the ``uint32`` maximum
+  before casting, preventing silent overflow / wraparound for very large
+  populations.
+* Add ``test_un_member_states_2020_laserframe_exceeds_uint32_max`` exercising a
+  ``LaserFrame`` whose total agent count exceeds ``uint32.max``, built from 2020
+  UN population estimates for all 193 member states (one node per country). The
+  test allocates ~24 GiB of property storage and self-skips on machines without
+  sufficient free RAM. New fixture ``tests/data/un_member_states_2020.csv``.
+* Add ``test_calc_capacity_rejects_negative_initial_pop`` covering the
+  ``initial_pop >= 0`` validation in ``calc_capacity()`` (single negative,
+  multiple negatives with offending values surfaced in the message, and a
+  zero-allowed sanity case).
+
+1.0.2 (2026-05-19)
+------------------
+
+* Prune the supported Python test matrix to 3.10 (oldest) and 3.14 (newest released).
+* Remove the unused ``args`` parameter from ``kmestimator`` for a faster ``laser.core`` import.
+* Update release/publish infrastructure and the GitHub Actions workflow.
+* Remove deprecated files and tidy the project structure.
+* Linter clean-up.
+
+1.0.1 (2026-02-26)
+------------------
+
+* Add support for Python 3.14 now that Numba supports it.
+* Fix snapshot capacity restoration and CBR handling for multi-node models (#355).
+* Improve calibration documentation (#354).
+* Documentation polish: fix README formatting, fix the LASER documentation link,
+  clarify install/build instructions, and bring CHANGELOG up to date.
+* Update copyright year in ``LICENSE``.
+* Update project URLs and the required ``uv`` version.
+* Remove macOS x86_64 entries from the CI configuration.
+* Make Sphinx happier.
+
 1.0.0 (2025-12-16)
 ------------------
 
@@ -74,9 +113,9 @@ Changelog
 * Add save_snapshot and load_snapshot functionality
 * Add additional examples for PropertySet operators
 * Improve PropertySet functionality:
-  - Update += to only accept new keys
-  - Add <<= to update existing keys
-  - Add |= to add or update keys
+  - Update ``+=`` to only accept new keys
+  - Add ``<<=`` to update existing keys
+  - Add ``|=`` to add or update keys
 * Fix overflow in migration matrix calculations
 * Update row_normalizer() to return float32
 * Update calibration documentation

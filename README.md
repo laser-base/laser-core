@@ -4,7 +4,7 @@
 
 ## Status
 
-[![documentation](https://readthedocs.org/projects/idmlaser/badge/?style=flat)](https://docs.idmod.org/projects/laser/en/latest/)
+[![documentation](https://img.shields.io/github/deployments/laser-base/laser-generic/github-pages?label=docs)](https://laser.idmod.org/laser-generic/)
 
 ![tests](https://github.com/laser-base/laser-core/actions/workflows/github-actions.yml/badge.svg)
 

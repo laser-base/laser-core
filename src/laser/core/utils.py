@@ -27,11 +27,17 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
 
     Returns:
 
-        np.ndarray: 1D array of length nnodes representing the estimated required capacity (number of agents) at each node.
+        np.ndarray: 1D ``uint32`` array of length ``nnodes`` representing the estimated required
+        capacity (number of agents) at each node. Per-node estimates that exceed the maximum
+        representable ``uint32`` value (``2**32 - 1``) are clamped to that maximum before being
+        cast, so the returned array is always safe to cast or sum without overflow.
     """
     # Validate birthrates shape against initial_pop shape
     _, nnodes = birthrates.shape
     assert len(initial_pop) == nnodes, f"Number of nodes in birthrates ({nnodes}) and initial_pop length ({len(initial_pop)}) must match"
+    assert np.all(
+        initial_pop >= 0
+    ), f"Initial populations must be >= 0. Found {','.join(map(str, initial_pop[np.where(initial_pop < 0)]))} in initial_pop"
 
     # Validate birthrates values, must be >= 0 and <= 100
     assert np.all(birthrates >= 0.0), "All birthrate values must be non-negative"
@@ -59,7 +65,10 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     exp_mu_t = np.exp(lamda.sum(axis=0))
 
     safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
-    estimates = np.round(initial_pop * safety_multiplier * exp_mu_t).astype(np.int32)
+    # Clamp to uint32.max before casting so per-node values that overflow uint32 saturate
+    # at the maximum representable value rather than wrapping around.
+    estimates = np.round(initial_pop * safety_multiplier * exp_mu_t)
+    estimates = np.minimum(estimates, np.iinfo(np.uint32).max).astype(np.uint32)
 
     return estimates
 

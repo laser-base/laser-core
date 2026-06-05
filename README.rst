@@ -15,8 +15,8 @@ Overview
     * - package
       - | |version| |wheel| |supported-versions| |supported-implementations|
         | |commits-since|
-.. |docs| image:: https://readthedocs.org/projects/idmlaser/badge/?style=flat
-    :target: https://docs.idmod.org/projects/laser/en/latest/
+.. |docs| image:: https://img.shields.io/github/deployments/laser-base/laser-generic/github-pages?label=docs
+    :target: https://laser.idmod.org/laser-generic/
     :alt: Documentation Status
 
 .. |github-actions| image:: https://github.com/laser-base/laser-core/actions/workflows/github-actions.yml/badge.svg
@@ -71,7 +71,7 @@ Documentation
 =============
 
 
-https://docs.idmod.org/projects/laser/en/latest/
+https://laser.idmod.org/laser-generic/
 
 
 Development
