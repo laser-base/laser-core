@@ -70,6 +70,6 @@ jobs:
         run: uvx --python 3.12 bump-my-version bump ${{ github.event.inputs.version_type }}
 
       - name: Push
-        run: |
-          git push origin HEAD:refs/heads/main
-          git push origin --tags
+        # `--follow-tags` pushes the branch and any annotated tags reachable from it
+        # in a single push event, so the downstream release workflow fires exactly once.
+        run: git push --follow-tags origin HEAD:refs/heads/main
