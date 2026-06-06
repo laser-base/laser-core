@@ -10,6 +10,7 @@ jobs:
   build:
     name: Build on Ubuntu 📦
     runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'v')
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -32,6 +33,7 @@ jobs:
       Sign Python 🐍 distribution 📦 with Sigstore and make GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'v')
     environment:
       name: restricted # remove if v* tag protection is enabled with GitHub App as sole bypass
     permissions:
@@ -80,6 +82,7 @@ jobs:
       Publish Python 🐍 distribution 📦 to PyPI
     needs: github-release
     runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'v')
     environment:
       name: restricted # remove if v* tag protection is enabled with GitHub App as sole bypass
       url: https://pypi.org/p/laser-core
