@@ -375,3 +375,417 @@ Once you've completed calibration:
 - **Run posterior checks** - Simulate with best-fit parameters and compare to held-out data
 - **Document results** - Record parameter values, likelihood scores, and any insights
 - **Use in scenario analysis** - Apply calibrated parameters to your research questions
+
+Distributed Calibration Patterns
+--------------------------------
+
+This section collects patterns, anti-patterns, and deployment heuristics
+for running distributed Optuna calibrations of LASER models on a
+Kubernetes cluster with a shared MySQL backend. The material is
+drawn from one extended deployment cycle in mid-2026 and is presented
+here as general guidance for future LASER calibration deployments,
+not as a project-specific post-mortem. Concrete configuration values
+shown below are illustrative; the corresponding values for your
+cluster come from your cluster admin.
+
+The section is split into seven categories: deployment, builds,
+shared-backend discipline, the probe-and-diagnose workflow,
+calibration-objective design, the identifiability workflow, and a
+pre-deployment checklist. The deployment and build patterns are the
+ones most likely to consume real time during a first deployment; the
+objective-design and identifiability sections capture the most
+durable scientific lessons.
+
+Kubernetes Deployment Patterns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Always declare both ``nodeSelector`` and a matching
+   ``toleration`` for the simulation node pool.** Shared clusters
+   typically reserve a tainted, dedicated simulation node pool so
+   calibration workloads do not interfere with system services
+   (databases, ingress, monitoring). Pods that omit the toleration
+   default-schedule to the general pool — which is also where shared
+   stateful services like MySQL usually live, and where heavy
+   per-pod workloads can drive eviction. The selector and the
+   toleration are inseparable: the selector chooses the pool, the
+   toleration earns the right to land there.
+
+   .. code-block:: yaml
+
+       spec:
+         nodeSelector:
+           pool-name: <your-sim-pool>
+         tolerations:
+           - effect: NoSchedule
+             key: pool-name
+             operator: Equal
+             value: <your-sim-pool>
+
+   Apply to **every** Pod spec in the calibration, including the
+   one-shot study-creator Job and any auxiliary probe Pods.
+
+2. **Set ``enableServiceLinks: false`` on every Pod spec when there
+   is a Service whose name matches an env-var prefix you also set
+   from a Secret.** Kubernetes' legacy Docker-links compatibility
+   shim auto-injects environment variables like
+   ``<SERVICE>_PORT=tcp://<ip>:<port>`` for every Service in the
+   namespace. If your application also relies on a ``<SERVICE>_PORT``
+   from a Secret, the two collide silently; one wins, your URL
+   parser fails non-obviously, and your worker logs read as if
+   the database hostname is wrong. ``enableServiceLinks: false``
+   disables the injection cleanly. A defensive ``int(port)``
+   coercion in the application's connection-URL builder catches
+   the same class of bug if the flag is ever forgotten.
+
+3. **Verify pod placement on every first deployment.** A
+   one-line ``kubectl get pods ... -o
+   jsonpath='{.spec.nodeName}'`` plus a lookup of the node's pool
+   label is the cheapest possible verification that your nodeSelector
+   is doing its job. Run it on the first deploy after any
+   manifest change.
+
+Container Build Patterns
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+4. **Build the package as a wheel; copy the wheel; never rsync the
+   source tree.** A naïve ``COPY .`` from the working directory of a
+   LASER model can pull in multi-gigabyte sibling directories
+   (scratch outputs, HDF5 caches, dev-only datasets) and produce
+   tens-of-GB build contexts. Build a local wheel first with
+   ``pip wheel --no-deps``, copy that wheel into the build context,
+   and install it inside the image:
+
+   .. code-block:: dockerfile
+
+       # On the host, before docker build:
+       python -m pip wheel --no-deps --wheel-dir /tmp/whl <pkg-root>
+
+       # In the Dockerfile:
+       COPY /tmp/whl/*.whl /wheels/
+       RUN pip install /wheels/*.whl
+
+   Build context drops from gigabytes to under 10 MB; image build
+   time drops correspondingly; the image contains exactly what you
+   intended.
+
+5. **Compile native extensions with a portable ``-march``, not
+   ``-march=native``.** LASER models that ship compiled C / OpenMP
+   kernels and build them inside the image will bake the build
+   host's CPU instruction set into the resulting ``.so`` files. If
+   the build host advertises a newer instruction set than any
+   target cluster node, the kernels crash with ``SIGILL`` (exit
+   132) the moment they are exercised on the cluster.
+
+   .. code-block:: bash
+
+       # Single-machine development build:
+       CFLAGS_ARCH="-march=native" ./build.sh
+
+       # Cluster image build:
+       CFLAGS_ARCH="-march=x86-64-v2" ./build.sh
+
+   ``x86-64-v2`` (Nehalem + SSE 4.2 + POPCNT) is portable to
+   virtually every cloud x86 server. Use ``x86-64-v3`` (Haswell +
+   AVX2 + BMI) only when you have measured evidence the cluster
+   advertises it. A ``CFLAGS_ARCH`` environment variable on your
+   build script that defaults to ``-march=native`` and is overridden
+   by the cluster-image Dockerfile is the cleanest configuration.
+
+6. **Use a pure-Python MySQL driver (PyMySQL) unless you have
+   measured evidence the C-extension driver is the bottleneck.**
+   ``mysqlclient`` is the canonical, fastest Python MySQL driver,
+   but it requires ``libmysqlclient-dev`` and a working C toolchain
+   in the image. On a slim base image these are not always
+   straightforwardly available, and the resulting per-trial
+   round-trip times are dominated by network and Optuna logic, not
+   by the driver. PyMySQL is pure Python, installs with one
+   ``pip install``, has zero apt dependencies, and is fast enough.
+   The Optuna URL scheme is ``mysql+pymysql://``.
+
+7. **Stage application data assets explicitly; do not rely on
+   workstation-relative paths inside the image.** Loaders that
+   reference paths relative to ``__file__`` or to the user's home
+   directory work fine in development and fail inside containers,
+   where ``__file__`` resolves to a site-packages path that is
+   completely unrelated to the working directory. The cleanest fix
+   is to parameterise loader paths via a ``data-dir`` argument and
+   pass the staged location explicitly. If the loader code is not
+   yours to modify, a Dockerfile-time symlink from the staged
+   location to the expected path works as a more compact
+   workaround.
+
+8. **Shell-glob ``[extras]`` parses as a character class, not as
+   pip extras.** This:
+
+   .. code-block:: bash
+
+       pip install /wheels/*.whl[full]
+
+   does *not* mean "install all wheels with the [full] extras".
+   The shell expands ``[full]`` as a character class matching one of
+   ``f``, ``u``, or ``l``. Use a for-loop to defer extras parsing
+   to pip:
+
+   .. code-block:: dockerfile
+
+       RUN set -e && \
+           for w in /wheels/*.whl; do \
+               pip install --no-cache-dir "$w[full]"; \
+           done
+
+   The double quotes around ``"$w[full]"`` cause the shell to skip
+   glob expansion on the bracket portion; pip then parses it as
+   the extras specifier.
+
+Shared Optuna Backend Patterns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A shared Optuna MySQL backend used by multiple teams accumulates
+trial history indefinitely. By the time the next team arrives, the
+``trial_params`` and ``trial_values`` tables may have millions of
+rows. Several routine-looking Optuna API calls are scan-and-join
+queries that are fine for a 100-trial study and pathologically slow
+against a million-trial database.
+
+9. **Calls that are safe against a long-history shared backend:**
+
+   - ``optuna.load_study(study_name=NAME, storage=URL)`` — single-row
+     ``SELECT ... WHERE study_name = ?``, fast at any scale.
+   - ``study.best_trial`` — single-row lookup once the study is
+     loaded.
+   - ``study.enqueue_trial({...})`` — single INSERT.
+   - ``study.optimize(objective, n_trials=N)`` — ask/tell loop
+     scoped to the loaded study.
+
+10. **Calls that are unsafe against a long-history shared backend:**
+
+    - ``optuna.get_all_study_summaries(storage)`` and the
+      ``optuna studies`` CLI that wraps it — both join against
+      ``trial_params`` and ``trial_values`` for every study, and
+      can hang for tens of minutes. Replace any liveness probe
+      based on ``optuna studies`` with a ``python -c
+      'optuna.load_study(name=..., storage=...)'`` that raises
+      ``KeyError`` if the study does not exist.
+    - ``len(study.trials)`` and ``study.trials_dataframe()`` —
+      fetch all trials and parameters. Avoid in worker code; use
+      only post-hoc on a completed study.
+
+11. **Local vs cluster Optuna version skew is a real failure mode.**
+    Optuna 4.x and 3.6.x have incompatible schema reads. A study
+    written by Optuna 3.6 can produce ``KeyError: 'Record does not
+    exist'`` when queried from a workstation running Optuna 4.7,
+    even though the row is plainly present in the database. If you
+    need to probe a cluster study from outside the cluster, either
+    pin your local Optuna to the image's version or run the probe
+    as an in-cluster one-shot Pod — same image, same Optuna, same
+    schema reads. See the probe-and-diagnose pattern below.
+
+Probe-and-Diagnose Workflow
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When a calibration is going through multiple iteration cycles
+(redesigning the objective, widening parameter bounds), invest up
+front in two patterns that pay back across every iteration.
+
+12. **Stage-agnostic scaffold via a ``STAGE_MODULE`` env var.**
+    Make the worker and study-creator Pods parameterised in two
+    runtime values:
+
+    - ``STAGE_MODULE``: a dotted Python import path to the module
+      defining the calibration's free parameters, warm-starts, and
+      objective function.
+    - ``STUDY_NAME``: the Optuna study name to write into.
+
+    Have the worker dynamically ``importlib.import_module`` the
+    stage module and call a well-known function on it (e.g.
+    ``_make_objective(targets, n_seeds)``); have the study-creator
+    call ``stage_module.get_warm_starts()`` to enqueue trials.
+    Each iteration of the calibration then requires only:
+
+    - a new ``stage_N.py`` module exposing the conventional
+      interface,
+    - a new wheel build,
+    - a new image tag,
+    - and an env-var bump in the manifest.
+
+    No scaffolding edits per iteration. This is a one-hour
+    investment that compounds across many iteration cycles.
+
+13. **In-cluster probe Pod for live-study inspection.** Build a
+    small helper script (``probe.sh``, ``probe_cluster.sh``, etc.)
+    that:
+
+    - spawns a one-shot Pod using the same calibration image and
+      the same node-selector / toleration as the workers,
+    - runs a small Python script (``probe_best.py``) inside the
+      Pod that loads the live Optuna study, retrieves the
+      best-so-far trial, re-runs a small ensemble of seeds at
+      those parameters, and writes a figure plus a
+      machine-readable summary to a known path,
+    - copies the artifacts back to the host with ``kubectl cp``.
+
+    Running entirely inside the cluster sidesteps both
+    ``kubectl port-forward`` brittleness and the Optuna version-skew
+    failure mode from item 11. A typical probe run is well under a
+    minute including a few model seeds.
+
+14. **Automated ditch-detection heuristics on every probe.** A
+    probe is most useful when it answers "is the optimizer heading
+    into a ditch?" deterministically, not by visual inspection
+    alone. Useful generic heuristics:
+
+    - **Wide miss:** any cell of your evaluation grid (e.g. data
+      point, age band × time, region × outcome) where the
+      model-vs-target gap exceeds a fixed tolerance. Count, list
+      the worst K, flag the total fraction.
+    - **Structural miss:** any sub-set of cells with ≥ K consecutive
+      wide misses along a meaningful axis (time, age, etc.).
+      Distinguishes localised initialisation transients from
+      systematic mis-fit.
+    - **Constraint check:** any physical or domain constraint
+      your objective enforces should be re-evaluated on the
+      probe sample independently of the loss value, so a probe
+      catches it even if the loss penalty has been silently
+      defeated.
+    - **Per-seed CV:** any cell with standard deviation across
+      seeds divided by mean exceeding a threshold (e.g. 0.5)
+      indicates the optimiser is finding a noisy minimum and the
+      result is suspect.
+
+    A single human-readable verdict line of the form ``"looks
+    good — no wide-miss, no structural, constraint in band"`` is a
+    clean target to write for and a clean signal for humans
+    glancing at probe artifacts.
+
+Calibration Objective Design
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The most durable scientific lesson from the deployment cycle that
+generated this section is about *what to put in the loss*, not how
+to deploy it.
+
+15. **Do not calibrate to pooled summary statistics alone.**
+    Longitudinal epidemiological datasets routinely contain severe
+    *trajectory* misfit that disappears when aggregated. A model
+    can match a pooled per-age prevalence mean exactly while
+    exhibiting catastrophic temporal behaviour — for example,
+    saturating to near-1.0 in the first few months of the
+    observation window and collapsing to near-0 by the end, such
+    that the pooled mean accidentally hits the target by averaging
+    opposite-sign residuals.
+
+    Always inspect, and where possible explicitly penalise:
+
+    - per-survey (or per-time-point) trajectories,
+    - per-stratum (age, region, intervention arm) trajectories,
+    - intervention-era dynamics versus pre-intervention dynamics.
+
+    An in-loss "trajectory shape penalty" — e.g. "for each
+    (arm, stratum, time-point) cell, add a quadratic excess penalty
+    whenever the absolute prevalence gap exceeds a tolerance" — is
+    cheap to compute and forces the optimiser to fit the shape
+    rather than the aggregate.
+
+16. **Constrain physically meaningful quantities, not just
+    statistical fit.** When the model has an emergent quantity that
+    is independently measurable in the literature (basic
+    reproduction number, annual entomological inoculation rate,
+    case-detection rate, etc.), add an explicit penalty for that
+    emergent quantity falling outside a defensible range. Without
+    such constraints, a complex model can routinely fit the
+    aggregate target at a wildly implausible value of the emergent
+    quantity — typically by compensating with another mechanism
+    such as infection duration or chronic-carriage strength. The
+    resulting parameter set is a good fit but is not usable for
+    predictive intervention analysis.
+
+17. **Add mechanism only after demonstrating that a simpler model
+    fails.** Each layer of model complexity should be motivated by
+    a specific characterised failure of the simpler version, not by
+    biological plausibility alone. Keep stage-by-stage records of
+    what failure was observed and what mechanism was added in
+    response, so a reviewer can trace each mechanism back to its
+    motivating data. Models built this way are easier to defend
+    against complexity-skeptics and easier to simplify later.
+
+Identifiability Workflow
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+18. **Run a 1D identifiability sweep before widening the search
+    space.** When you suspect a parameter is at the edge of its
+    search range, do not just widen the range and re-launch a
+    multi-day cluster run. Instead, hold all other parameters at
+    the current best and sweep the suspect parameter across its
+    range (and a candidate widened range) on a small grid, with
+    multiple seeds per grid point. Compute a signal-to-noise ratio:
+
+    .. math::
+
+        \mathrm{S/N} = \frac{\max\_\mathrm{grid}\,L - \min\_\mathrm{grid}\,L}{\sigma_L(\text{at centre across seeds})}
+
+    Three outcomes are useful:
+
+    - **Interior minimum, large S/N:** parameter is well-constrained;
+      the calibration result is scientifically defensible for that
+      parameter.
+    - **Edge minimum:** parameter is pinned at the boundary;
+      widening the range may help.
+    - **Flat (small S/N):** parameter is unidentifiable in the
+      current objective; consider fixing it at a prior value or
+      adding a constraint that gives it traction.
+
+    A small grid sweep takes minutes on a single workstation and
+    saves cluster hours; it should be the default step between a
+    completed calibration and any decision to widen search ranges.
+
+19. **Interpret edge minima carefully.** A 1D sweep is a slice
+    through the full parameter space. When TPE has already explored
+    a higher-dimensional basin and your sweep returns "edge
+    minimum, widen", verify in a small cluster run that the widened
+    range actually produces a lower loss in the full higher-
+    dimensional context. It is common for a 1D slice to suggest
+    widening a parameter that, when widened, requires compensating
+    moves in other parameters that net out to no improvement.
+
+Pre-Deployment Checklist
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before pushing a first image to a shared cluster, spend 30 minutes
+working through the following questions explicitly. Each question
+maps to one of the patterns above.
+
+- **Node pool:** does my pod spec declare both a ``nodeSelector``
+  and a matching ``toleration`` for the cluster's simulation node
+  pool? Have I confirmed the resulting pod placement on the first
+  deploy?
+- **Service-link injection:** does every Pod spec set
+  ``enableServiceLinks: false``? Does my application's connection-
+  URL builder also defensively coerce the port to an integer?
+- **MySQL driver:** is my image using ``mysql+pymysql://`` with
+  PyMySQL installed?
+- **Native extensions:** are my C / OpenMP kernels compiled with a
+  portable ``-march`` for the cluster image?
+- **Build context:** is the application installed from a locally-
+  built wheel, with no source-tree COPY?
+- **Data paths:** are application data assets staged at paths the
+  code actually reads inside the container?
+- **Optuna API discipline:** does my worker use
+  ``optuna.load_study(name)`` rather than
+  ``optuna.get_all_study_summaries()`` to determine whether a study
+  exists? Does any call in the worker hot path fetch all trials?
+- **Optuna version parity:** does the Optuna version on my
+  workstation match the image's, or am I committed to probing only
+  from inside the cluster?
+- **Stage scaffold:** is my worker parameterised by ``STAGE_MODULE``
+  and ``STUDY_NAME``, so the next iteration is a wheel-rebuild and
+  an env-var bump rather than a code change?
+- **Objective design:** does my loss penalise trajectory shape, not
+  just pooled aggregates? Does it constrain at least one
+  physically meaningful emergent quantity?
+- **Identifiability:** have I run 1D sweeps over each free
+  parameter at the current best before committing to widening any
+  search ranges?
+
+Working through this checklist once per cluster (not once per
+iteration) typically saves hours of debugging time that the
+patterns above were extracted from.
