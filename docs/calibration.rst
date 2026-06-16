@@ -388,13 +388,196 @@ not as a project-specific post-mortem. Concrete configuration values
 shown below are illustrative; the corresponding values for your
 cluster come from your cluster admin.
 
-The section is split into seven categories: deployment, builds,
+The section is split into nine categories: assumptions and cluster
+handoff, the local-validation discipline, deployment, builds,
 shared-backend discipline, the probe-and-diagnose workflow,
 calibration-objective design, the identifiability workflow, and a
-pre-deployment checklist. The deployment and build patterns are the
-ones most likely to consume real time during a first deployment; the
-objective-design and identifiability sections capture the most
-durable scientific lessons.
+pre-deployment checklist. The first two — assumptions and local
+validation — are the cheapest investments and the ones most likely
+to prevent days of debugging time on a shared cluster. The
+deployment and build patterns are the ones most likely to consume
+real time during a first deployment; the objective-design and
+identifiability sections capture the most durable scientific
+lessons.
+
+Assumptions and Cluster Handoff
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This subsection is written for LASER users who are new to running
+on a managed Kubernetes cluster. It does **not** explain Kubernetes,
+Azure, AKS, GKE, EKS, or any other specific cloud or
+Kubernetes-management product; upstream Kubernetes and your cluster
+vendor's documentation cover those. The patterns below assume you
+have already obtained access to a cluster through your organisation
+and need to know how to make that access productive without
+becoming a cluster administrator.
+
+**What this section assumes you already have:**
+
+- A LASER calibration that runs end-to-end on your workstation as
+  described in *Stage 1: Local Calibration*.
+- A working local Docker installation. The same calibration runs
+  inside a container against a local MySQL container, as described
+  in *Stage 2: Dockerized Local Calibration*. (If you have not yet
+  reached this point, do not push anything to a shared cluster.
+  See the local-validation discipline subsection below.)
+- ``kubectl`` installed on your workstation and a ``KUBECONFIG``
+  pointing at the target cluster.
+- Whatever network access the cluster requires (corporate VPN,
+  bastion host, IP allow-list) — confirm with your cluster admin.
+
+**What this section deliberately does not require you to learn first:**
+
+- Kubernetes internals, YAML schema details, or the administrative
+  concepts of any specific Kubernetes-management product. The
+  patterns below tell you which primitives matter for calibration
+  workloads; upstream Kubernetes documentation explains how they
+  work in general.
+
+**What to ask your cluster administrator for.** A single ~15-minute
+handoff conversation with the cluster admin, with the following
+explicit list of questions, will prevent most of the time-consuming
+debugging cycles below. Bring this list with you:
+
+- A ``kubeconfig`` file that grants access to a working cluster and
+  a working namespace on it.
+- The container image registry URL you should push to, and the
+  name of an ``imagePullSecret`` that is pre-provisioned in your
+  namespace and is wired to that registry.
+- The simulation node pool's nodeSelector label (key and value),
+  and the corresponding toleration key, value, and effect. Pods
+  that lack the toleration will land on the cluster's general
+  pool — which is typically also where shared stateful services
+  like the calibration MySQL pod live. *(See item 1 below.)*
+- The name of the namespace ``Secret`` that holds the shared MySQL
+  connection details, and the list of keys it contains
+  (typically ``MYSQL_USER``, ``MYSQL_PASSWORD``, ``MYSQL_HOST``,
+  ``MYSQL_DB``).
+- Any network restrictions: corporate VPN access required, an IP
+  allow-list, a proxy, or any outbound-egress restrictions.
+- Any namespace-level resource quotas (total CPU, total memory,
+  PVC count) that constrain how large you can scale your worker
+  pool.
+- Whether the cluster autoscales nodes on pod demand, and if so,
+  whether your workload's expected scale-out has any constraints
+  (e.g. you might need approval before requesting 100 simultaneous
+  pods).
+- Any conventions your cluster admin asks you to follow for
+  cleaning up completed Jobs, log retention, and so on.
+
+Once you have those answers — they fit on one page — you have
+everything the patterns below assume. None of the patterns require
+you to administer the cluster yourself.
+
+Validate Locally with Docker Before Pushing to the Cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Rule:** Do not use the cluster as your debugging environment.
+Every category of build, image, and integration failure in the
+patterns that follow is reproducible — and ten to a hundred times
+cheaper to iterate on — with a small ``docker-compose`` stand on
+your workstation. A failed cluster deployment cycle takes five to
+twenty minutes (rebuild the image, push it, redeploy the Job, wait
+for the pod to come up, fetch logs, diagnose); the same failure
+caught locally takes seconds.
+
+The local-validation stand has three containers, all running on
+your workstation:
+
+- a MySQL container running the same major version your cluster uses,
+- a one-shot study-creator container running **your calibration
+  image** — the exact image you would push to the cluster — pointed
+  at the local MySQL,
+- a worker container running the same image with a tiny trial
+  budget (one to three trials).
+
+A ``docker-compose.yml`` template that captures this pattern
+(illustrative, not normative):
+
+.. code-block:: yaml
+
+    services:
+      mysql:
+        image: mysql:8.0
+        environment:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: optunaDatabase
+          MYSQL_USER: optuna
+          MYSQL_PASSWORD: localpw
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+          interval: 2s
+          retries: 30
+
+      study-creator:
+        image: <your-image>:dev
+        depends_on:
+          mysql:
+            condition: service_healthy
+        environment:
+          MYSQL_USER: optuna
+          MYSQL_PASSWORD: localpw
+          MYSQL_HOST: mysql
+          MYSQL_DB: optunaDatabase
+          STAGE_MODULE: <your.calibration.stage_module>
+          STUDY_NAME: local-smoke
+        command: ["python3", "/app/study_creator.py"]
+
+      worker:
+        image: <your-image>:dev
+        depends_on:
+          study-creator:
+            condition: service_completed_successfully
+        environment:
+          MYSQL_USER: optuna
+          MYSQL_PASSWORD: localpw
+          MYSQL_HOST: mysql
+          MYSQL_DB: optunaDatabase
+          STAGE_MODULE: <your.calibration.stage_module>
+          STUDY_NAME: local-smoke
+          WORKER_N_TRIALS: "3"
+        command: ["python3", "/app/worker.py"]
+
+The local stand catches, in roughly the order they show up across
+deployment cycles:
+
+- Build context bloat from a naïve ``COPY .`` *(see item 4)*.
+- Wheel-build errors and missing dependencies in your package
+  metadata.
+- The shell-glob extras parsing trap *(see item 8)*.
+- Application data assets not present at the path your loader
+  expects inside the container *(see item 7)*.
+- Native extensions crashing on import for any reason — wrong
+  ``-march``, missing system libraries, ABI mismatch *(see item 5)*.
+- MySQL connection URL parsing bugs from a malformed env var or
+  badly URL-encoded password *(see item 2)*.
+- ``optuna.create_study`` / ``optuna.load_study`` round-trip
+  failures.
+- Stage-module interface mismatches — missing ``_make_objective``,
+  unexpected signature, no ``get_warm_starts`` *(see item 12)*.
+- A single trial failing to complete for any model-level reason
+  (model assertions, divergent simulation, etc.).
+
+**What the local stand does not catch**, and which therefore
+warrant separate attention in the cluster phase:
+
+- Node-pool placement issues — your local Docker has no notion of
+  taints or selectors *(see item 1)*.
+- Behaviour of the worker against a long-history shared MySQL
+  backend with millions of accumulated rows *(see items 9–10)*.
+- Optuna client-vs-server version-skew issues — your local Optuna
+  matches your image's by construction *(see item 11)*.
+- Kubernetes-specific Pod-spec quirks like the
+  ``enableServiceLinks`` env-injection collision *(see item 2)*.
+
+**Discipline:** every change to your stage module, every Dockerfile
+change, and every dependency adjustment should pass the local
+stand before being pushed to the cluster. The cluster is a scaling
+environment, not a debugging environment. Most of the items in the
+patterns below were discovered in deployment cycles where the local
+stand was skipped; explicitly establishing the discipline at the
+start of a project prevents most of them from being rediscovered
+the hard way.
 
 Kubernetes Deployment Patterns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -754,6 +937,16 @@ Before pushing a first image to a shared cluster, spend 30 minutes
 working through the following questions explicitly. Each question
 maps to one of the patterns above.
 
+- **Cluster handoff:** have I obtained, from my cluster admin in a
+  single 15-minute conversation, every item in the handoff list —
+  ``kubeconfig``, registry URL + ``imagePullSecret`` name,
+  simulation-pool ``nodeSelector`` and ``toleration``, MySQL
+  ``Secret`` name and keys, network restrictions, and resource
+  quotas?
+- **Local validation:** has my exact image (the one I am about to
+  push) been validated end-to-end on the local docker-compose
+  stand against a local MySQL? Did a small trial run to completion
+  there?
 - **Node pool:** does my pod spec declare both a ``nodeSelector``
   and a matching ``toleration`` for the cluster's simulation node
   pool? Have I confirmed the resulting pod placement on the first
