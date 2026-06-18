@@ -60,26 +60,36 @@ def cell_heading(cell):
     return heading_of(src)
 
 
-def apply_to_notebook(nb_path: Path, inserts, base_dir: Path):
-    data = json.loads(nb_path.read_text())
+def apply_to_notebook(nb_path: Path, inserts, base_dir: Path, *, write: bool = True):
+    data = json.loads(nb_path.read_text(encoding="utf-8"))
     cells = data["cells"]
     plan = []
     for ins in inserts:
         idx = find_marker_cell(cells, ins["after_cell_containing"])
-        text = (base_dir / ins["md_file"]).read_text().rstrip() + "\n"
+        text = (base_dir / ins["md_file"]).read_text(encoding="utf-8").rstrip() + "\n"
         plan.append((idx, text))
 
     changed = False
     # Apply in reverse index order so earlier inserts don't shift later positions.
     for idx, text in sorted(plan, key=lambda x: x[0], reverse=True):
         wanted = heading_of(text)
-        if idx + 1 < len(cells) and cell_heading(cells[idx + 1]) == wanted:
+        next_idx = idx + 1
+
+        if next_idx < len(cells) and cell_heading(cells[next_idx]) == wanted:
+            existing = "".join(cells[next_idx].get("source", []))
+            if existing != text:
+                cells[next_idx]["source"] = text.splitlines(keepends=True)
+                changed = True
             continue  # already present
-        cells.insert(idx + 1, md_cell(text))
+
+        cells.insert(next_idx, md_cell(text))
         changed = True
 
-    if changed:
-        nb_path.write_text(json.dumps(data, indent=1) + "\n")
+    if changed and write:
+        nb_path.write_text(
+            json.dumps(data, indent=1, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     return changed
 
 
