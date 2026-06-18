@@ -1,0 +1,28 @@
+[
+  {
+    "notebook": "../../examples/age_pyramid.ipynb",
+    "inserts": [
+      {
+        "after_cell_containing": "plt.title(\"Age Distribution in Nigeria\")",
+        "md_file": "age_pyramid_nigeria.md"
+      },
+      {
+        "after_cell_containing": "plt.title(\"Age Distribution in the United States\")",
+        "md_file": "age_pyramid_us.md"
+      }
+    ]
+  },
+  {
+    "notebook": "../../examples/kmestimator.ipynb",
+    "inserts": [
+      {
+        "after_cell_containing": "ax2.set_ylabel(\"Input Cumulative Deaths\", color=color)",
+        "md_file": "kmestimator_newborn.md"
+      },
+      {
+        "after_cell_containing": "ax2.set_ylabel(\"Input Cumulative Deaths (50+)\", color=color)",
+        "md_file": "kmestimator_50plus.md"
+      }
+    ]
+  }
+]

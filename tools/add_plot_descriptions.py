@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Insert markdown plot-description cells into Jupyter notebooks.
+
+Driven by a JSON manifest of (notebook, marker, md_file) inserts. The script is
+idempotent: it identifies an already-inserted description by matching the first
+line of the markdown file against the next cell after the marker cell, so
+re-running makes no changes.
+
+Manifest format (paths are resolved relative to the manifest file's directory):
+
+    [
+      {
+        "notebook": "../examples/age_pyramid.ipynb",
+        "inserts": [
+          {
+            "after_cell_containing": "plt.title(\"Age Distribution in Nigeria\")",
+            "md_file": "age_pyramid_nigeria.md"
+          }
+        ]
+      }
+    ]
+
+Usage:
+    python tools/add_plot_descriptions.py tools/plot_descriptions/config.json
+    python tools/add_plot_descriptions.py tools/plot_descriptions/config.json --check
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def md_cell(text):
+    return {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
+
+
+def find_marker_cell(cells, marker):
+    matches = [i for i, c in enumerate(cells) if marker in "".join(c.get("source", []))]
+    if not matches:
+        raise LookupError(f"no cell contains marker {marker!r}")
+    if len(matches) > 1:
+        raise LookupError(f"marker {marker!r} is ambiguous (cells {matches})")
+    return matches[0]
+
+
+def heading_of(text):
+    return text.lstrip().splitlines()[0].strip()
+
+
+def cell_heading(cell):
+    if cell.get("cell_type") != "markdown":
+        return None
+    src = "".join(cell.get("source", []))
+    if not src.strip():
+        return None
+    return heading_of(src)
+
+
+def apply_to_notebook(nb_path: Path, inserts, base_dir: Path):
+    data = json.loads(nb_path.read_text())
+    cells = data["cells"]
+    plan = []
+    for ins in inserts:
+        idx = find_marker_cell(cells, ins["after_cell_containing"])
+        text = (base_dir / ins["md_file"]).read_text().rstrip() + "\n"
+        plan.append((idx, text))
+
+    changed = False
+    # Apply in reverse index order so earlier inserts don't shift later positions.
+    for idx, text in sorted(plan, key=lambda x: x[0], reverse=True):
+        wanted = heading_of(text)
+        if idx + 1 < len(cells) and cell_heading(cells[idx + 1]) == wanted:
+            continue  # already present
+        cells.insert(idx + 1, md_cell(text))
+        changed = True
+
+    if changed:
+        nb_path.write_text(json.dumps(data, indent=1) + "\n")
+    return changed
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("manifest", type=Path, help="JSON manifest of inserts")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit with status 1 if any notebook would change (for CI)",
+    )
+    args = parser.parse_args()
+
+    manifest_path = args.manifest.resolve()
+    base_dir = manifest_path.parent
+    entries = json.loads(manifest_path.read_text())
+
+    any_change = False
+    for entry in entries:
+        nb_path = (base_dir / entry["notebook"]).resolve()
+        changed = apply_to_notebook(nb_path, entry["inserts"], base_dir)
+        print(f"{'CHANGED' if changed else 'ok     '} {nb_path}")
+        any_change |= changed
+
+    if args.check and any_change:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
