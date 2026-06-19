@@ -6,7 +6,11 @@ idempotent: it identifies an already-inserted description by matching the first
 line of the markdown file against the next cell after the marker cell, so
 re-running makes no changes.
 
-Manifest format (paths are resolved relative to the manifest file's directory):
+Manifest format (paths are resolved relative to the manifest file's directory).
+Each insert specifies the target cell by exactly ONE of `after_cell_containing`
+(a unique substring of the code cell's source) or `after_cell_id` (the cell's
+stable `id` field — use this when two code cells have identical source, so
+no substring can disambiguate them):
 
     [
       {
@@ -15,6 +19,10 @@ Manifest format (paths are resolved relative to the manifest file's directory):
           {
             "after_cell_containing": "plt.title(\"Age Distribution in Nigeria\")",
             "md_file": "age_pyramid_nigeria.md"
+          },
+          {
+            "after_cell_id": "8f77666c",
+            "md_file": "duplicate_cell_description.md"
           }
         ]
       }
@@ -54,6 +62,30 @@ def find_marker_cell(cells, marker):
     return matches[0]
 
 
+def find_cell_by_id(cells, cell_id):
+    # Cell IDs are stable across edits (assigned by Jupyter on cell creation),
+    # so this disambiguates byte-for-byte identical code cells where no
+    # substring marker can.
+    matches = [i for i, c in enumerate(cells) if c.get("id") == cell_id]
+    if not matches:
+        raise LookupError(f"no cell with id {cell_id!r}")
+    if len(matches) > 1:
+        raise LookupError(f"cell id {cell_id!r} is not unique (cells {matches})")
+    return matches[0]
+
+
+def resolve_target_cell(cells, ins):
+    has_marker = "after_cell_containing" in ins
+    has_id = "after_cell_id" in ins
+    if has_marker == has_id:
+        raise ValueError(
+            "each insert must specify exactly one of after_cell_containing or after_cell_id"
+        )
+    if has_marker:
+        return find_marker_cell(cells, ins["after_cell_containing"])
+    return find_cell_by_id(cells, ins["after_cell_id"])
+
+
 def heading_of(text):
     return text.lstrip().splitlines()[0].strip()
 
@@ -72,7 +104,7 @@ def apply_to_notebook(nb_path: Path, inserts, base_dir: Path, *, write: bool = T
     cells = data["cells"]
     plan = []
     for ins in inserts:
-        idx = find_marker_cell(cells, ins["after_cell_containing"])
+        idx = resolve_target_cell(cells, ins)
         text = (base_dir / ins["md_file"]).read_text(encoding="utf-8").rstrip() + "\n"
         plan.append((idx, text))
 
@@ -117,7 +149,8 @@ def main():
     any_change = False
     for entry in entries:
         nb_path = (base_dir / entry["notebook"]).resolve()
-        changed = apply_to_notebook(nb_path, entry["inserts"], base_dir)
+        # --check is a dry-run: report what would change without modifying notebooks.
+        changed = apply_to_notebook(nb_path, entry["inserts"], base_dir, write=not args.check)
         print(f"{'CHANGED' if changed else 'ok     '} {nb_path}")
         any_change |= changed
 
