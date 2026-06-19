@@ -39,11 +39,18 @@ def md_cell(text):
 
 
 def find_marker_cell(cells, marker):
-    matches = [i for i, c in enumerate(cells) if marker in "".join(c.get("source", []))]
+    # Only match code cells. A description inserted as a markdown cell could
+    # quote the marker string verbatim, which would make later --check passes
+    # see it as ambiguous against the very prose it generated.
+    matches = [
+        i for i, c in enumerate(cells)
+        if c.get("cell_type") == "code"
+        and marker in "".join(c.get("source", []))
+    ]
     if not matches:
-        raise LookupError(f"no cell contains marker {marker!r}")
+        raise LookupError(f"no code cell contains marker {marker!r}")
     if len(matches) > 1:
-        raise LookupError(f"marker {marker!r} is ambiguous (cells {matches})")
+        raise LookupError(f"marker {marker!r} is ambiguous (code cells {matches})")
     return matches[0]
 
 
