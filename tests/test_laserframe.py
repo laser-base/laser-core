@@ -769,3 +769,147 @@ class TestLaserFrame(unittest.TestCase):
             lf.age = np.arange(10)
 
         return
+
+    def test_dir_excludes_dynamic_property_names_on_empty_frame(self):
+        """Given a fresh LaserFrame with no scalar/vector properties added,
+        when ``dir(frame)`` is called,
+        then names that will later be added (e.g. "age", "status") are NOT present, but
+        the standard public surface (``count``, ``capacity``, ``add``, ``add_scalar_property``,
+        ``sort``, ``squash``) IS present.
+
+        Failure of this test means ``__dir__`` is leaking names that don't yet exist as
+        attributes — REPL tab-completion would offer columns the user hasn't created,
+        which is misleading.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        names = set(dir(lf))
+
+        assert "age" not in names
+        assert "status" not in names
+
+        for expected in ("count", "capacity", "add", "add_scalar_property", "add_vector_property", "add_array_property", "sort", "squash"):
+            assert expected in names, f"Expected {expected!r} in dir(LaserFrame), got {sorted(names)}"
+
+        return
+
+    def test_dir_includes_scalar_property_names(self):
+        """Given a LaserFrame with scalar properties added via ``add_scalar_property``,
+        when ``dir(frame)`` is called,
+        then the public property names are present.
+
+        This is what makes Jupyter/IPython tab-completion surface the dynamically-added
+        columns. Without ``__dir__`` returning them, ``lf.<TAB>`` would miss the columns
+        because they live in ``self._properties`` (under the underscored backing name in
+        ``__dict__``) rather than as plain attributes.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_scalar_property("status", dtype=np.int8)
+
+        names = set(dir(lf))
+
+        assert "age" in names, f"Expected 'age' in dir(lf), got {sorted(names)}"
+        assert "status" in names, f"Expected 'status' in dir(lf), got {sorted(names)}"
+
+        return
+
+    def test_dir_includes_vector_property_names(self):
+        """Given a LaserFrame with a vector property added via ``add_vector_property``,
+        when ``dir(frame)`` is called,
+        then the public property name is present.
+
+        Vector properties are stored the same way as scalar properties (in
+        ``self._properties`` with an underscored backing array), so they rely on the same
+        ``__dir__`` merge to be discoverable.
+        """
+        lf = LaserFrame(capacity=64, initial_count=0)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+
+        names = set(dir(lf))
+
+        assert "position" in names, f"Expected 'position' in dir(lf), got {sorted(names)}"
+
+        return
+
+    def test_dir_includes_array_property_names(self):
+        """Given a LaserFrame with an array property added via ``add_array_property``,
+        when ``dir(frame)`` is called,
+        then the public property name is present.
+
+        Unlike scalar/vector properties, ``add_array_property`` stores the array directly
+        as an attribute (it lives in ``self.__dict__``), so it appears in dir() via the
+        base class implementation — not via ``self._properties``. This test guards against
+        any future change that moves array storage but forgets to update ``__dir__``.
+        """
+        lf = LaserFrame(capacity=32, initial_count=0)
+        lf.add_array_property("sensor_data", shape=(10, 10), dtype=np.float32)
+
+        names = set(dir(lf))
+
+        assert "sensor_data" in names, f"Expected 'sensor_data' in dir(lf), got {sorted(names)}"
+
+        return
+
+    def test_dir_includes_kwargs_attributes(self):
+        """Given a LaserFrame constructed with extra kwargs (e.g. ``start_year=1944``),
+        when ``dir(frame)`` is called,
+        then the kwarg names appear.
+
+        Kwargs are stored as plain attributes (via ``setattr`` in ``__init__``), so they
+        flow in through the base class's ``__dir__``. This test pins that behavior so a
+        refactor that disabled kwarg setting would be caught.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0, start_year=1944, source="ourworldindata")
+
+        names = set(dir(lf))
+
+        assert "start_year" in names, f"Expected 'start_year' in dir(lf), got {sorted(names)}"
+        assert "source" in names, f"Expected 'source' in dir(lf), got {sorted(names)}"
+
+        return
+
+    def test_dir_is_sorted_and_unique(self):
+        """Given a LaserFrame with several properties added,
+        when ``dir(frame)`` is called,
+        then the result is sorted in ascending order and contains no duplicates.
+
+        ``__dir__`` is expected by convention (and by ``inspect``/``help``) to return a
+        sorted list. The current implementation uses ``sorted(set(...) | set(...))`` —
+        this test enforces both invariants.
+        """
+        lf = LaserFrame(capacity=64, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_scalar_property("status", dtype=np.int8)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+        lf.add_array_property("sensor_data", shape=(4, 4), dtype=np.float32)
+
+        listing = dir(lf)
+
+        assert listing == sorted(listing), "dir(LaserFrame) must return a sorted list"
+        assert len(listing) == len(set(listing)), f"dir(LaserFrame) must not contain duplicates: {listing}"
+
+        return
+
+    def test_dir_grows_when_properties_are_added(self):
+        """Given a LaserFrame, when properties are added,
+        then ``dir(frame)`` grows by exactly the new public names (no spurious additions).
+
+        Pins the contract that ``add_*_property`` is the ONLY way new names enter dir()
+        through the dynamic path. Catches regressions where, say, the underscored
+        backing name ``_age`` is double-added or auxiliary state leaks into the listing.
+        """
+        lf = LaserFrame(capacity=64, initial_count=0)
+        before = set(dir(lf))
+
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+
+        after = set(dir(lf))
+
+        new = after - before
+        # The backing arrays `_age` and `_position` also become attributes (via setattr),
+        # so they too show up in dir() via the base class — that's expected and part of
+        # the documented "underlying array access" surface (see test_underlying_array_access).
+        assert new == {"age", "_age", "position", "_position"}, f"Unexpected additions to dir(LaserFrame): {sorted(new)}"
+
+        return

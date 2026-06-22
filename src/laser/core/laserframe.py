@@ -223,6 +223,11 @@ class LaserFrame:
     def __len__(self) -> int:
         return self._count
 
+    def __dir__(self):
+        def_names = super().__dir__()
+        dyn_names = self._properties.keys()
+        return sorted(set(def_names) | set(dyn_names))
+
     def sort(self, indices, verbose: bool = False) -> None:
         """
         Sorts the elements of the object's numpy arrays based on the provided indices.
