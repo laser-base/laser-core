@@ -153,6 +153,182 @@ class TestUtilityFunctions(unittest.TestCase):
 
         return
 
+    def test_calc_capacity_zero_deathrates_matches_no_deathrates_modulo_floor(self):
+        """Given identical birthrates and initial populations,
+        when ``calc_capacity`` is called with ``deathrates=None`` versus an all-zero
+        ``deathrates`` matrix of matching shape,
+        then the per-node estimates match exactly.
+
+        Pins the backward-compat boundary: the new mortality math must be a strict no-op
+        for callers that pass zero deaths. With zero deaths the death-credit attenuation
+        is ``exp(0) == 1``, and the post-mortality floor at ``initial_pop`` cannot bind
+        because the births-only growth is already ≥ ``initial_pop`` (births non-negative).
+        """
+        nticks = 365 * 2
+        nnodes = 3
+        birthrates = np.full((nticks, nnodes), 25.0, dtype=np.float32)
+        initial_pop = np.array([50_000, 100_000, 250_000], dtype=np.int64)
+
+        without_deaths = calc_capacity(birthrates, initial_pop)
+        with_zero_deaths = calc_capacity(birthrates, initial_pop, deathrates=np.zeros_like(birthrates))
+
+        assert np.array_equal(without_deaths, with_zero_deaths), (
+            f"Zero deathrates should be a no-op vs deathrates=None. " f"Got {without_deaths} vs {with_zero_deaths}"
+        )
+
+        return
+
+    def test_calc_capacity_nonzero_deathrates_reduces_estimate(self):
+        """Given identical births and initial populations,
+        when ``calc_capacity`` is called with non-zero ``deathrates``,
+        then the per-node estimate is strictly smaller than the births-only estimate.
+
+        The peak-living bound (births minus credited deaths) is the correct quantity to
+        preallocate for simulations that reclaim dead-agent slots via ``squash``. If this
+        test fails, mortality is not actually being subtracted — capacity would be
+        over-allocated (wasteful but safe) or, worse, the math direction is inverted.
+        """
+        nticks = 365 * 5  # 5 years — enough for the difference to be visible
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 35.0, dtype=np.float32)
+        deathrates = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        initial_pop = np.array([1_000_000, 2_000_000], dtype=np.int64)
+
+        births_only = calc_capacity(birthrates, initial_pop, safety_factor=0.0)
+        with_deaths = calc_capacity(birthrates, initial_pop, safety_factor=0.0, deathrates=deathrates, mortality_safety_factor=0.0)
+
+        assert np.all(
+            with_deaths < births_only
+        ), f"With non-zero CDR the estimate must be smaller. births_only={births_only}, with_deaths={with_deaths}"
+        assert np.all(with_deaths > initial_pop), f"With CBR > CDR the projection should still grow above initial_pop, got {with_deaths}"
+
+        return
+
+    def test_calc_capacity_net_shrinking_floors_at_initial_pop(self):
+        """Given mortality that exceeds births (net-shrinking projection),
+        when ``calc_capacity`` is called with both rate grids,
+        then the per-node estimate is floored at ``initial_pop`` (never drops below).
+
+        The peak SIMULTANEOUS living count occurs at ``t=0`` for a net-shrinking projection,
+        so the bound must hold at least the starting population — anything less couldn't
+        store the agents present at simulation start. Failure means an under-allocation
+        that would crash the simulation on the very first tick.
+        """
+        nticks = 365 * 10
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 5.0, dtype=np.float32)
+        deathrates = np.full((nticks, nnodes), 40.0, dtype=np.float32)
+        initial_pop = np.array([500_000, 1_000_000], dtype=np.int64)
+
+        estimates = calc_capacity(
+            birthrates,
+            initial_pop,
+            safety_factor=0.0,
+            deathrates=deathrates,
+            mortality_safety_factor=0.0,  # tightest bound — most aggressive shrink
+        )
+
+        assert np.all(estimates >= initial_pop), f"Net-shrinking projection must floor at initial_pop. Got {estimates} vs {initial_pop}"
+
+        return
+
+    def test_calc_capacity_mortality_safety_factor_underestimates_deaths(self):
+        """Given identical birth and death rates,
+        when ``calc_capacity`` is called with increasing ``mortality_safety_factor`` values,
+        then the per-node estimate increases monotonically.
+
+        ``death_credit = 1 / (1 + mortality_safety_factor)``: larger ``mortality_safety_factor``
+        credits fewer deaths against births, holding more mortality back as headroom. This
+        implements the documented intent that we **underestimate mortality** when sizing
+        capacity. Failure means the knob has the wrong sign or is silently ignored.
+        """
+        nticks = 365 * 3
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 30.0, dtype=np.float32)
+        deathrates = np.full((nticks, nnodes), 15.0, dtype=np.float32)
+        initial_pop = np.array([100_000, 250_000], dtype=np.int64)
+
+        # safety_factor=0 isolates the mortality_safety_factor effect from births headroom.
+        est_credit_all = calc_capacity(birthrates, initial_pop, safety_factor=0.0, deathrates=deathrates, mortality_safety_factor=0.0)
+        est_credit_half = calc_capacity(birthrates, initial_pop, safety_factor=0.0, deathrates=deathrates, mortality_safety_factor=1.0)
+        est_credit_seventh = calc_capacity(birthrates, initial_pop, safety_factor=0.0, deathrates=deathrates, mortality_safety_factor=6.0)
+
+        assert np.all(
+            est_credit_all < est_credit_half
+        ), f"Crediting all deaths should give the tightest bound. {est_credit_all} vs {est_credit_half}"
+        assert np.all(
+            est_credit_half < est_credit_seventh
+        ), f"Crediting fewer deaths should give a larger bound. {est_credit_half} vs {est_credit_seventh}"
+
+        return
+
+    def test_calc_capacity_rejects_invalid_deathrates(self):
+        """Given invalid ``deathrates`` (wrong shape, negative, or out-of-range),
+        when ``calc_capacity`` is called,
+        then it raises ``AssertionError`` with a message identifying the problem.
+
+        Mirrors the existing validation on ``birthrates``. A silently accepted bad
+        ``deathrates`` would propagate NaN / negative / over-100% values into the
+        ``exp(-death_credit * sum_d)`` term and produce a meaningless capacity.
+        """
+        nticks = 365
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 25.0, dtype=np.float32)
+        initial_pop = np.array([10_000, 20_000], dtype=np.int64)
+
+        # Wrong shape (different node count)
+        bad_shape = np.full((nticks, nnodes + 1), 10.0, dtype=np.float32)
+        with pytest.raises(AssertionError, match=r"deathrates shape .* must match birthrates shape"):
+            calc_capacity(birthrates, initial_pop, deathrates=bad_shape)
+
+        # Negative value
+        bad_neg = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        bad_neg[0, 0] = -1.0
+        with pytest.raises(AssertionError, match=r"All deathrate values must be non-negative"):
+            calc_capacity(birthrates, initial_pop, deathrates=bad_neg)
+
+        # Value over the documented [0, 100] band
+        bad_hi = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        bad_hi[0, 0] = 150.0
+        with pytest.raises(AssertionError, match=r"All deathrate values must be less than or equal to 100"):
+            calc_capacity(birthrates, initial_pop, deathrates=bad_hi)
+
+        # Out-of-range mortality_safety_factor
+        good_deaths = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        with pytest.raises(AssertionError, match=r"mortality_safety_factor must be between 0 and 6"):
+            calc_capacity(birthrates, initial_pop, deathrates=good_deaths, mortality_safety_factor=-0.1)
+        with pytest.raises(AssertionError, match=r"mortality_safety_factor must be between 0 and 6"):
+            calc_capacity(birthrates, initial_pop, deathrates=good_deaths, mortality_safety_factor=6.5)
+
+        return
+
+    def test_calc_capacity_new_params_are_keyword_only(self):
+        """Given a positional call that previously passed ``safety_factor`` as the third arg,
+        when ``calc_capacity`` is invoked the old way,
+        then the call still works (safety_factor remains positional) and the new
+        ``deathrates`` / ``mortality_safety_factor`` parameters are NOT reachable positionally.
+
+        Pins the backward-compatible API surface: a fourth positional argument must raise
+        ``TypeError`` rather than silently bind to ``deathrates``. Callers must use a keyword
+        to opt into mortality-aware sizing.
+        """
+        nticks = 365
+        nnodes = 2
+        birthrates = np.full((nticks, nnodes), 25.0, dtype=np.float32)
+        initial_pop = np.array([10_000, 20_000], dtype=np.int64)
+
+        # Legacy positional safety_factor still works.
+        estimates = calc_capacity(birthrates, initial_pop, 2.0)
+        assert estimates.dtype == np.uint32
+        assert np.all(estimates > initial_pop)
+
+        # A fourth positional arg must fail rather than bind to deathrates.
+        good_deaths = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        with pytest.raises(TypeError):
+            calc_capacity(birthrates, initial_pop, 1.0, good_deaths)  # — intentional misuse
+
+        return
+
 
 class TestGridUtilityFunction(unittest.TestCase):
     def check_grid_validity(self, gdf, M, N, node_size_degs=0.1, origin_x=0, origin_y=0):

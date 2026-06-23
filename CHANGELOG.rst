@@ -17,6 +17,21 @@ Unreleased
   ``initial_pop >= 0`` validation in ``calc_capacity()`` (single negative,
   multiple negatives with offending values surfaced in the message, and a
   zero-allowed sanity case).
+* ``calc_capacity()`` gains optional mortality. New keyword-only parameters
+  ``deathrates`` (a 2D CDR matrix matching the ``birthrates`` shape; default
+  ``None`` for backward compat) and ``mortality_safety_factor`` (default
+  ``1.0``) switch the function from a cumulative-births bound to a
+  peak-living bound appropriate for simulations that reclaim dead-agent
+  slots via ``LaserFrame.squash``. Mortality is intentionally
+  underestimated: only ``1 / (1 + mortality_safety_factor)`` of the death
+  sum is credited against births, with the remainder held back as headroom
+  against a lower-mortality realization. Per-node estimates floor at
+  ``initial_pop`` when ``deathrates`` is provided. Math mirrors the
+  ``calc_capacity_cdr`` function in
+  `razer <https://github.com/clorton/razer>`_. New tests cover backward-
+  compatibility (zero deaths == no deaths), monotonicity in
+  ``mortality_safety_factor``, the net-shrinking floor, validation, and the
+  keyword-only API surface.
 
 1.0.2 (2026-05-19)
 ------------------

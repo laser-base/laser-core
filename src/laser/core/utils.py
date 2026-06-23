@@ -15,22 +15,52 @@ import numpy as np
 from shapely.geometry import Polygon
 
 
-def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor: float = 1.0) -> np.ndarray:
+def calc_capacity(
+    birthrates: np.ndarray,
+    initial_pop: np.ndarray,
+    safety_factor: float = 1.0,
+    *,
+    deathrates: np.ndarray | None = None,
+    mortality_safety_factor: float = 1.0,
+) -> np.ndarray:
     """
     Estimate the required capacity (number of agents) to model a population given birthrates over time.
 
+    By default (``deathrates=None``) this estimates a **cumulative-births bound**: enough slots to
+    hold every agent that will ever be born. When ``deathrates`` are provided, the estimate becomes
+    a **peak-living bound** appropriate for simulations that reclaim dead-agent slots via
+    `LaserFrame.squash`. The peak-living bound credits a configurable fraction of the projected
+    deaths against births so the returned capacity holds the maximum simultaneous living population
+    rather than every agent ever alive.
+
     Args:
 
-        birthrates (np.ndarray): 2D array of shape (nsteps, nnodes) representing birthrates (CBR) per 1,000 individuals per year.
-        initial_pop (np.ndarray): 1D array of length nnodes representing the initial population at each node.
-        safety_factor (float): Safety factor to account for variability in population growth. Default is 1.0.
+        birthrates (np.ndarray): 2D array of shape (nsteps, nnodes) representing birthrates (CBR)
+            per 1,000 individuals per year. Each value in ``[0, 100]``.
+        initial_pop (np.ndarray): 1D array of length nnodes representing the initial population at
+            each node. Non-negative.
+        safety_factor (float): Headroom multiplier on the births-driven growth term, ``1 +
+            safety_factor * (sqrt(exp_mu_t) - 1)``. Must be in ``[0, 6]``. Default 1.0.
+        deathrates (np.ndarray, optional): 2D array with the **same shape as birthrates**,
+            representing crude death rates (CDR) per 1,000 individuals per year. Each value in
+            ``[0, 100]``. Default ``None`` (no mortality — same behavior as previous versions).
+            Keyword-only.
+        mortality_safety_factor (float): Controls how much of the projected mortality is credited
+            against births when ``deathrates`` is given. Only ``1 / (1 + mortality_safety_factor)``
+            of the death sum is credited; the remainder is held back as headroom against a
+            lower-mortality (faster-growing) realization. Must be in ``[0, 6]``. Default 1.0
+            (credit half of deaths, hold half back). Set to ``0.0`` to credit deaths fully (tightest
+            bound). Ignored when ``deathrates`` is ``None``. Keyword-only.
 
     Returns:
 
         np.ndarray: 1D ``uint32`` array of length ``nnodes`` representing the estimated required
         capacity (number of agents) at each node. Per-node estimates that exceed the maximum
         representable ``uint32`` value (``2**32 - 1``) are clamped to that maximum before being
-        cast, so the returned array is always safe to cast or sum without overflow.
+        cast, so the returned array is always safe to cast or sum without overflow. When
+        ``deathrates`` is provided, each estimate is also floored at the corresponding
+        ``initial_pop`` value — a net-shrinking projection cannot report below the starting
+        population (whose peak living count occurs at t=0).
     """
     # Validate birthrates shape against initial_pop shape
     _, nnodes = birthrates.shape
@@ -45,6 +75,15 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
 
     # Validate safety_factor
     assert 0 <= safety_factor <= 6, f"safety_factor must be between 0 and 6, got {safety_factor}"
+    # Validate mortality_safety_factor unconditionally for consistency with safety_factor —
+    # the actual mortality math only fires when deathrates is provided.
+    assert 0 <= mortality_safety_factor <= 6, f"mortality_safety_factor must be between 0 and 6, got {mortality_safety_factor}"
+
+    # Validate deathrates if provided
+    if deathrates is not None:
+        assert deathrates.shape == birthrates.shape, f"deathrates shape {deathrates.shape} must match birthrates shape {birthrates.shape}"
+        assert np.all(deathrates >= 0.0), "All deathrate values must be non-negative"
+        assert np.all(deathrates <= 100.0), "All deathrate values must be less than or equal to 100"
 
     # Convert CBR to daily growth rate
     # CBR = births per 1,000 individuals per year
@@ -65,9 +104,23 @@ def calc_capacity(birthrates: np.ndarray, initial_pop: np.ndarray, safety_factor
     exp_mu_t = np.exp(lamda.sum(axis=0))
 
     safety_multiplier = 1 + safety_factor * (np.sqrt(exp_mu_t) - 1)
+    estimates = initial_pop * safety_multiplier * exp_mu_t
+
+    if deathrates is not None:
+        # Daily per-individual death rates, same Geometric Brownian approximation as for births.
+        lamda_d = (1.0 + deathrates / 1000) ** (1.0 / 365) - 1.0
+        # Underestimate mortality: credit only `1 / (1 + mortality_safety_factor)` of the death sum
+        # against births and hold the rest back as headroom. mortality_safety_factor=0 credits
+        # deaths fully (tightest bound); larger values credit fewer deaths (looser bound).
+        death_credit = 1.0 / (1.0 + mortality_safety_factor)
+        estimates = estimates * np.exp(-death_credit * lamda_d.sum(axis=0))
+        # Floor at initial_pop: peak SIMULTANEOUS living count is at least the starting population
+        # (occurs at t=0 for a net-shrinking projection where growth < 1).
+        estimates = np.maximum(estimates, initial_pop)
+
     # Clamp to uint32.max before casting so per-node values that overflow uint32 saturate
     # at the maximum representable value rather than wrapping around.
-    estimates = np.round(initial_pop * safety_multiplier * exp_mu_t)
+    estimates = np.round(estimates)
     estimates = np.minimum(estimates, np.iinfo(np.uint32).max).astype(np.uint32)
 
     return estimates
