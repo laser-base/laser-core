@@ -254,6 +254,26 @@ class LaserFrame:
         dyn_names = self._properties.keys()
         return sorted(set(def_names) | set(dyn_names))
 
+    def __contains__(self, item) -> bool:
+        # Column-style membership: True for any name LaserFrame's documented access
+        # surface advertises — registered properties (lf.age), their underscored backing
+        # arrays (lf._age, an advertised "underlying array access" path), array
+        # properties (lf.sensor_data), and kwargs-set attributes (lf.start_year).
+        # False for internal state (_count, _capacity, _properties), class-level
+        # @property descriptors / methods (use hasattr for those), and non-string items.
+        # Note: `object` does not define __contains__, so we cannot delegate via super().
+        if not isinstance(item, str):
+            return False
+        if item in self._properties:
+            return True
+        # An underscored name matches iff its public counterpart is a registered scalar
+        # or vector property. This surfaces the documented backing-array access
+        # (lf._age, lf._position) without leaking internal _count / _capacity / _properties.
+        if item.startswith("_") and item[1:] in self._properties:
+            return True
+        # Non-underscored attrs in __dict__: array properties and kwargs.
+        return item in self.__dict__ and not item.startswith("_")
+
     def sort(self, indices, verbose: bool = False) -> None:
         """
         Sorts the elements of the object's numpy arrays based on the provided indices.

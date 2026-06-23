@@ -44,6 +44,33 @@ Unreleased
   monotonic. New tests cover the spike-then-decline scenario (asserts new >
   end-of-sim) and the monotonic case (asserts new == end-of-sim).
   Illustrative script + plot under ``misc/calc_capacity_peak_vs_end.{py,png}``.
+* Implemented ``LaserFrame.__contains__`` so that ``name in lf`` matches every
+  name the LaserFrame documented access surface advertises, and nothing more:
+
+  - ``True`` for property names added via ``add_scalar_property`` /
+    ``add_vector_property`` / ``add_array_property`` (e.g. ``"age" in lf``).
+  - ``True`` for the underscored backing arrays of registered scalar / vector
+    properties (e.g. ``"_age" in lf``) — these are a documented "underlying
+    array access" path (see the module docstring and
+    ``test_underlying_array_access``). The rule is "an underscored name matches
+    iff its public counterpart is a registered property", which automatically
+    keeps internal state filtered.
+  - ``True`` for non-underscored kwargs-set attributes (e.g.
+    ``LaserFrame(N, start_year=1944)`` → ``"start_year" in lf``).
+  - ``True`` for a user-added property whose public name itself begins with
+    ``_`` (e.g. ``lf.add_scalar_property("_private_col")`` → ``"_private_col"
+    in lf``) — the property registry is always honored, regardless of name.
+  - ``False`` for internal state (``_count``, ``_capacity``, ``_properties``)
+    — these live in ``__dict__`` but are not advertised columns or backing
+    arrays. Direct access via ``lf._count`` etc. is unchanged; only the
+    ``in`` advertisement is filtered.
+  - ``False`` for methods and class-level ``@property`` descriptors
+    (``count``, ``capacity``, ``sort``); use ``hasattr(lf, name)`` for that
+    broader question.
+  - ``False`` for non-string items, including unhashable ones (a short-circuit
+    ``isinstance(item, str)`` check makes the test safe for lists / dicts).
+
+  Eleven new tests pin the contract.
 
 1.0.2 (2026-05-19)
 ------------------

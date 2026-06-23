@@ -913,3 +913,245 @@ class TestLaserFrame(unittest.TestCase):
         assert new == {"age", "_age", "position", "_position"}, f"Unexpected additions to dir(LaserFrame): {sorted(new)}"
 
         return
+
+    def test_contains_does_not_raise(self):
+        """Given a LaserFrame and any membership query, when ``x in lf`` is evaluated,
+        then it returns a ``bool`` without raising — even for items that are not present.
+
+        Regression guard for the pre-fix implementation, which called
+        ``super().__contains__(item)``. Because ``LaserFrame`` inherits directly from
+        ``object`` (which does not define ``__contains__``), every membership query used
+        to raise ``AttributeError: 'super' object has no attribute '__contains__'``. If
+        this test ever fails again, the override has reverted to that broken form.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+
+        # Each of these used to raise AttributeError before the fix.
+        assert isinstance("age" in lf, bool)
+        assert isinstance("missing" in lf, bool)
+        assert isinstance(42 in lf, bool)
+
+        return
+
+    def test_contains_returns_true_for_scalar_property(self):
+        """Given a scalar property added via ``add_scalar_property``,
+        when the public name is queried with ``in``,
+        then the result is ``True``.
+
+        Scalar properties live in ``self._properties`` under their public name. This is
+        the dominant use case for ``__contains__`` — column-style "does this frame have
+        an 'age' column?" lookup. Failure means callers cannot reliably guard property
+        access (``if "age" in lf: ...``).
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_scalar_property("status", dtype=np.int8)
+
+        assert "age" in lf
+        assert "status" in lf
+
+        return
+
+    def test_contains_returns_true_for_vector_property(self):
+        """Given a vector property added via ``add_vector_property``,
+        when the public name is queried with ``in``,
+        then the result is ``True``.
+
+        Vector properties are stored the same way as scalar properties (in
+        ``self._properties`` keyed by the public name) and must surface identically to
+        ``in``. A regression that special-cases scalar vs. vector here would be a
+        surprise for callers that don't care about the distinction.
+        """
+        lf = LaserFrame(capacity=64, initial_count=0)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+
+        assert "position" in lf
+
+        return
+
+    def test_contains_returns_true_for_array_property(self):
+        """Given an array property added via ``add_array_property``,
+        when the public name is queried with ``in``,
+        then the result is ``True``.
+
+        Unlike scalar/vector properties, array properties store the array directly as an
+        instance attribute (via ``setattr(self, name, ...)``). They reach ``__contains__``
+        through the ``self.__dict__`` half of the check, not through ``self._properties``.
+        Pins the "both storage paths are visible to ``in``" contract.
+        """
+        lf = LaserFrame(capacity=32, initial_count=0)
+        lf.add_array_property("sensor_data", shape=(10, 10), dtype=np.float32)
+
+        assert "sensor_data" in lf
+
+        return
+
+    def test_contains_returns_true_for_kwargs_attribute(self):
+        """Given a LaserFrame constructed with extra kwargs,
+        when the kwarg name is queried with ``in``,
+        then the result is ``True``.
+
+        Kwargs are stored as ordinary attributes by ``__init__`` (``setattr(self, k, v)``)
+        and end up in ``self.__dict__``. They should be discoverable via ``in`` the same
+        way an array property is — both reach the test through ``self.__dict__``.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0, start_year=1944, source="ourworldindata")
+
+        assert "start_year" in lf
+        assert "source" in lf
+
+        return
+
+    def test_contains_returns_false_for_unknown_name(self):
+        """Given a LaserFrame with several properties added,
+        when a name that was never added is queried with ``in``,
+        then the result is ``False`` (and no exception is raised).
+
+        ``in`` is meant to be a safe, side-effect-free predicate. A False negative is
+        far less harmful than an unconditional AttributeError (the pre-fix behavior).
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+        lf.add_array_property("sensor_data", shape=(4, 4), dtype=np.float32)
+
+        assert "missing" not in lf
+        assert "" not in lf
+
+        return
+
+    def test_contains_returns_false_for_non_string_items(self):
+        """Given a LaserFrame and a non-string membership query,
+        when ``42 in lf`` (or similar) is evaluated,
+        then the result is ``False`` (and no exception is raised, even for unhashable items).
+
+        Column names are strings, so any non-string query trivially isn't a column. The
+        implementation short-circuits on ``isinstance(item, str)`` before any dict lookup,
+        which also makes membership tests safe for unhashable items (a plain ``item in
+        __dict__`` lookup would raise ``TypeError`` on, e.g., a list).
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+
+        # Hashable non-strings.
+        assert 42 not in lf
+        assert None not in lf
+        assert (1, 2) not in lf
+        assert 3.14 not in lf
+
+        # Unhashable items — the isinstance short-circuit prevents a TypeError.
+        assert [1, 2] not in lf
+        assert {"k": "v"} not in lf
+
+        return
+
+    def test_contains_matches_underscored_backing_of_registered_property(self):
+        """Given a scalar or vector property added via ``add_*_property``,
+        when its underscored backing name is queried with ``in``,
+        then the result is ``True``.
+
+        ``add_scalar_property`` / ``add_vector_property`` deliberately expose the backing
+        NumPy array as ``lf._<name>`` (see the module docstring lines 25-28 and
+        ``test_underlying_array_access``) — that's a documented access path. ``in`` honors
+        it: ``"_age" in lf`` is True. The rule is "underscored name matches iff its public
+        counterpart is in ``_properties``", which keeps internal state filtered (see the
+        companion ``test_contains_excludes_internal_state`` test).
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+        lf.add_vector_property("position", length=3, dtype=np.float32)
+
+        assert "_age" in lf, "Backing array of a registered scalar property should match `in`."
+        assert "_position" in lf, "Backing array of a registered vector property should match `in`."
+
+        # And of course the public names still match.
+        assert "age" in lf
+        assert "position" in lf
+
+        return
+
+    def test_contains_excludes_internal_state(self):
+        """Given a LaserFrame,
+        when internal state names (``_count``, ``_capacity``, ``_properties``) are
+        queried with ``in``,
+        then the result is ``False`` — these are implementation details, not advertised
+        columns or backing arrays.
+
+        The rule "underscored name matches iff its public counterpart is in
+        ``_properties``" filters these out automatically: ``count`` / ``capacity`` /
+        ``properties`` are not user-added properties, so their underscored siblings do
+        not match. Direct access via ``lf._count`` still works — ``in`` simply doesn't
+        advertise those names.
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("age", dtype=np.int32)
+
+        assert "_count" not in lf
+        assert "_capacity" not in lf
+        assert "_properties" not in lf
+
+        # Spot check that a fabricated "_anything" name also doesn't match unless its
+        # counterpart is registered — defends the rule's general form.
+        assert "_not_a_property" not in lf
+
+        return
+
+    def test_contains_matches_user_added_underscored_property(self):
+        """Given a user who explicitly adds a property whose public name begins with ``_``,
+        when that name is queried with ``in``,
+        then the result is ``True``.
+
+        The underscore filter only applies to the ``__dict__`` half of the check — the
+        ``_properties`` half is unconditional. If a caller deliberately registers a
+        property like ``"_private_col"`` via ``add_scalar_property``, that IS a column
+        they added and ``in`` must honor it. (Without this carve-out the rule would
+        accidentally hide intentional "private" column names from the very API used to
+        register them.)
+        """
+        lf = LaserFrame(capacity=128, initial_count=0)
+        lf.add_scalar_property("_private_col", dtype=np.int32)
+
+        assert "_private_col" in lf
+
+        return
+
+    def test_contains_returns_false_for_methods_and_class_properties(self):
+        """Given a LaserFrame,
+        when a method name (e.g. ``"sort"``) or a class-level ``@property`` name (e.g.
+        ``"count"`` / ``"capacity"``) is queried with ``in``,
+        then the result is ``False``.
+
+        ``__contains__`` checks instance state (``_properties`` + ``__dict__``) — methods
+        and class-level descriptors live on the class, not the instance, so they
+        intentionally do NOT match. The semantic boundary is: ``x in lf`` answers "is x
+        a column or instance attribute of this frame?", not "is x accessible from this
+        frame at all?" — use ``hasattr(lf, x)`` for the broader question.
+
+        Failure indicates the implementation has started leaking class-level names; the
+        contract that ``in`` is column-centric (matching the column-table mental model
+        of LaserFrame) would no longer hold.
+        """
+        lf = LaserFrame(capacity=128, initial_count=10)
+        lf.add_scalar_property("age", dtype=np.int32)
+
+        # Methods on the class — never in __dict__/(_properties).
+        assert "sort" not in lf
+        assert "squash" not in lf
+        assert "add_scalar_property" not in lf
+        assert "add" not in lf
+
+        # `count` and `capacity` are @property descriptors on the class.
+        assert "count" not in lf
+        assert "capacity" not in lf
+
+        # And hasattr still works for those, demonstrating the boundary.
+        assert hasattr(lf, "count")
+        assert hasattr(lf, "capacity")
+        assert hasattr(lf, "sort")
+
+        return
+
+
+if __name__ == "__main__":
+    pytest.main()
