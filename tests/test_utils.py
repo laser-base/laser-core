@@ -329,6 +329,90 @@ class TestUtilityFunctions(unittest.TestCase):
 
         return
 
+    def test_calc_capacity_peak_living_exceeds_end_of_sim_for_fluctuating_rates(self):
+        """Given a scenario where CBR/CDR fluctuate so the population peaks in the middle of
+        the simulation and declines back near the start by the end,
+        when ``calc_capacity`` is called with the deaths-aware path,
+        then the returned estimate equals the trajectory **peak**, not the (much smaller)
+        end-of-simulation value.
+
+        Regression guard for the time-fluctuation issue: a naive estimate that uses
+        ``exp(sum_b - death_credit * sum_d)`` (i.e. end-of-sim cumulative sums) would
+        under-allocate a LaserFrame that has to hold the intermediate peak living
+        population. ``calc_capacity`` must instead take the max across time of the
+        cumulative net exponent.
+
+        Scenario: 5 years of CBR=50 / CDR=5 (rapid growth) followed by 5 years of CBR=5 /
+        CDR=50 (rapid decline). Sums cancel at the end (end ≈ initial_pop) but the
+        trajectory peaks at ~5 years.
+        """
+        n_years = 10
+        nticks = n_years * 365
+        nnodes = 1
+        initial_pop = np.array([1_000_000], dtype=np.int64)
+
+        # Build the spike-then-decline rate grids.
+        cbr = np.empty((nticks, nnodes), dtype=np.float32)
+        cdr = np.empty((nticks, nnodes), dtype=np.float32)
+        half = 5 * 365
+        cbr[:half] = 50.0
+        cdr[:half] = 5.0
+        cbr[half:] = 5.0
+        cdr[half:] = 50.0
+
+        # Tight bound: no births variance headroom (safety_factor=0), credit all deaths
+        # (mortality_safety_factor=0) — this isolates the peak-vs-end behavior.
+        new_estimate = calc_capacity(cbr, initial_pop, safety_factor=0.0, deathrates=cdr, mortality_safety_factor=0.0)[0]
+
+        # Compute the end-of-sim formula by hand for comparison: exp(sum_b - sum_d).
+        lamda_b = (1.0 + cbr / 1000) ** (1.0 / 365) - 1.0
+        lamda_d = (1.0 + cdr / 1000) ** (1.0 / 365) - 1.0
+        end_estimate = int(round(initial_pop[0] * float(np.exp(lamda_b.sum() - lamda_d.sum()))))
+        end_estimate = max(end_estimate, int(initial_pop[0]))  # floor like the implementation does
+
+        assert new_estimate > end_estimate, f"Peak-living estimate {new_estimate:,} should exceed end-of-sim estimate {end_estimate:,}"
+
+        # Sanity bound the peak analytically: 5 years of net daily rate
+        # (lamda_b - lamda_d) with CBR=50, CDR=5 → annual factor ~ exp(0.0445) per year,
+        # over 5 years ~ exp(0.2225) ≈ 1.249. So peak ≈ 1.249e6, ±a few percent.
+        assert 1_200_000 <= new_estimate <= 1_300_000, f"Expected peak ~1.25M, got {new_estimate:,}"
+
+        return
+
+    def test_calc_capacity_monotonic_net_growth_peak_equals_end(self):
+        """Given a deaths-aware scenario where every daily tick has net positive growth
+        (births > credited deaths everywhere), so the cumulative net exponent is monotonically
+        non-decreasing,
+        when ``calc_capacity`` is called,
+        then the peak-living formula and the end-of-sim formula yield the same answer.
+
+        Defends against the peak-across-time fix accidentally changing answers for the
+        common monotonic case (CBR > CDR throughout). Only flicker-y CBR/CDR scenarios
+        should see a different bound.
+        """
+        nticks = 365 * 3
+        nnodes = 2
+        # Constant CBR=35, CDR=10 — net positive every tick, cumulative is strictly increasing.
+        birthrates = np.full((nticks, nnodes), 35.0, dtype=np.float32)
+        deathrates = np.full((nticks, nnodes), 10.0, dtype=np.float32)
+        initial_pop = np.array([100_000, 250_000], dtype=np.int64)
+        msf = 1.0  # default mortality safety factor
+
+        new_estimate = calc_capacity(birthrates, initial_pop, safety_factor=0.0, deathrates=deathrates, mortality_safety_factor=msf)
+
+        # End-of-sim formula by hand: initial_pop * exp(sum_b - death_credit * sum_d), rounded.
+        lamda_b = (1.0 + birthrates / 1000) ** (1.0 / 365) - 1.0
+        lamda_d = (1.0 + deathrates / 1000) ** (1.0 / 365) - 1.0
+        death_credit = 1.0 / (1.0 + msf)
+        end_value = initial_pop * np.exp(lamda_b.sum(axis=0) - death_credit * lamda_d.sum(axis=0))
+        end_value = np.round(np.maximum(end_value, initial_pop)).astype(np.uint32)
+
+        assert np.array_equal(new_estimate, end_value), (
+            f"For a monotonic-growth scenario, peak-living and end-of-sim must agree. " f"new={new_estimate} end={end_value}"
+        )
+
+        return
+
 
 class TestGridUtilityFunction(unittest.TestCase):
     def check_grid_validity(self, gdf, M, N, node_size_degs=0.1, origin_x=0, origin_y=0):

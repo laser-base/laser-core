@@ -24,7 +24,7 @@ Unreleased
   peak-living bound appropriate for simulations that reclaim dead-agent
   slots via ``LaserFrame.squash``. Mortality is intentionally
   underestimated: only ``1 / (1 + mortality_safety_factor)`` of the death
-  sum is credited against births, with the remainder held back as headroom
+  rate is credited against births, with the remainder held back as headroom
   against a lower-mortality realization. Per-node estimates floor at
   ``initial_pop`` when ``deathrates`` is provided. Math mirrors the
   ``calc_capacity_cdr`` function in
@@ -32,6 +32,18 @@ Unreleased
   compatibility (zero deaths == no deaths), monotonicity in
   ``mortality_safety_factor``, the net-shrinking floor, validation, and the
   keyword-only API surface.
+* ``calc_capacity()`` deaths-aware path now bounds the **peak-across-time**
+  net growth rather than the end-of-simulation cumulative. Fluctuating CBR /
+  CDR (e.g. high CBR early followed by high CDR later) can produce an
+  intermediate peak in living population well above the end-of-sim value;
+  the previous formula used ``exp(sum_b - death_credit * sum_d)`` (an end-of-
+  sim cumulative) and would have under-allocated against that peak. Now
+  computes ``max_t cumsum(lamda_b - death_credit * lamda_d)``, floored at 0,
+  and uses that exponent. Monotonic-growth scenarios (births dominate deaths
+  every tick) are unchanged because peak == end when the cumulative is
+  monotonic. New tests cover the spike-then-decline scenario (asserts new >
+  end-of-sim) and the monotonic case (asserts new == end-of-sim).
+  Illustrative script + plot under ``misc/calc_capacity_peak_vs_end.{py,png}``.
 
 1.0.2 (2026-05-19)
 ------------------
