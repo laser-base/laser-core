@@ -109,13 +109,23 @@ def calc_capacity(
     if deathrates is not None:
         # Daily per-individual death rates, same Geometric Brownian approximation as for births.
         lamda_d = (1.0 + deathrates / 1000) ** (1.0 / 365) - 1.0
-        # Underestimate mortality: credit only `1 / (1 + mortality_safety_factor)` of the death sum
-        # against births and hold the rest back as headroom. mortality_safety_factor=0 credits
-        # deaths fully (tightest bound); larger values credit fewer deaths (looser bound).
+        # Underestimate mortality: credit only `1 / (1 + mortality_safety_factor)` of the death
+        # rate against births and hold the rest back as headroom. mortality_safety_factor=0
+        # credits deaths fully (tightest bound); larger values credit fewer deaths (looser bound).
         death_credit = 1.0 / (1.0 + mortality_safety_factor)
-        estimates = estimates * np.exp(-death_credit * lamda_d.sum(axis=0))
-        # Floor at initial_pop: peak SIMULTANEOUS living count is at least the starting population
-        # (occurs at t=0 for a net-shrinking projection where growth < 1).
+        # Peak-across-time net growth: the *end-of-sim* cumulative exponent
+        # (sum_b - death_credit*sum_d) can be smaller than the cumulative exponent reached at an
+        # intermediate tick. An early high-CBR-low-CDR window followed by a later high-CDR-low-CBR
+        # window peaks well above either endpoint. The capacity bound must hold the peak living
+        # population, so we take the max across time of the cumulative net exponent — floored at 0
+        # because growth begins at exp(0) = 1 (the initial population is always representable).
+        net_daily = lamda - death_credit * lamda_d
+        peak_exponent = np.maximum(np.max(np.cumsum(net_daily, axis=0), axis=0), 0.0)
+        # Note: safety_multiplier stays anchored to the births-only end-of-sim growth (exp_mu_t),
+        # which equals the births-only peak because CBR >= 0 makes that cumulative monotonic.
+        estimates = initial_pop * safety_multiplier * np.exp(peak_exponent)
+        # Floor at initial_pop: peak SIMULTANEOUS living count is at least the starting
+        # population (occurs at t=0 for a net-shrinking projection where growth < 1).
         estimates = np.maximum(estimates, initial_pop)
 
     # Clamp to uint32.max before casting so per-node values that overflow uint32 saturate
