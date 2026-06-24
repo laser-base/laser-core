@@ -15,7 +15,7 @@ extensions = [
 source_suffix = {".rst": "restructuredtext"}
 master_doc = "index"
 project = "LASER"
-year = "2023-2024"
+year = "2023-2026"
 author = "Institute for Disease Modeling"
 copyright = f"{year}, {author}"
 version = release = "1.0.4"
