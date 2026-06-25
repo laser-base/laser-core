@@ -18,7 +18,7 @@ project = "LASER"
 year = "2023-2026"
 author = "Institute for Disease Modeling"
 copyright = f"{year}, {author}"
-version = release = "1.0.4"
+version = release = "1.0.5"
 
 pygments_style = "trac"
 templates_path = ["."]
