@@ -224,6 +224,32 @@ class LaserFrame:
         return self._count
 
     def __dir__(self):
+        """
+        Return the sorted list of names accessible on this LaserFrame, including
+        dynamically-added scalar and vector property names.
+
+        Scalar / vector properties (added via ``add_scalar_property`` /
+        ``add_vector_property``) are stored in ``self._properties`` keyed by the public
+        name (e.g. ``"age"``) and reached by attribute access through ``__getattr__``.
+        They do NOT live directly in ``self.__dict__`` under that public name, so the
+        default ``dir()`` would miss them. Merging ``self._properties.keys()`` into the
+        base ``__dir__()`` makes those columns discoverable by REPL tab-completion
+        (IPython, Jupyter), by ``help()`` / ``inspect``, and by IDE introspection.
+
+        Array properties (added via ``add_array_property``) and constructor kwargs are
+        already in ``self.__dict__`` and flow in through ``super().__dir__()`` without
+        the merge, so they don't need special handling.
+
+        Returns:
+            list[str]: Sorted, deduplicated list of attribute names — the union of
+                everything ``object.__dir__(self)`` would normally return plus the
+                public names of all scalar and vector properties.
+
+        See Also:
+            ``__contains__``: column-style membership (``"age" in lf``); narrower than
+                ``dir(lf)`` — methods and class-level ``@property`` descriptors appear in
+                ``dir()`` but not in ``in``.
+        """
         def_names = super().__dir__()
         dyn_names = self._properties.keys()
         return sorted(set(def_names) | set(dyn_names))
