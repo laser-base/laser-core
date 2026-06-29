@@ -255,12 +255,12 @@ class LaserFrame:
         return sorted(set(def_names) | set(dyn_names))
 
     def __contains__(self, item) -> bool:
-        # Column-style membership: True for any name LaserFrame's documented access
-        # surface advertises — registered properties (lf.age), their underscored backing
-        # arrays (lf._age, an advertised "underlying array access" path), array
-        # properties (lf.sensor_data), and kwargs-set attributes (lf.start_year).
-        # False for internal state (_count, _capacity, _properties), class-level
-        # @property descriptors / methods (use hasattr for those), and non-string items.
+        # Membership tests (`name in frame`) indicate whether `name` is a documented
+        # public data member of the `LaserFrame`. This includes registered properties
+        # (`age`), their documented backing arrays (`_age`), array properties, and
+        # public attributes supplied at construction. Internal implementation attributes
+        # (`_count`, `_capacity`, etc.), methods, and property descriptors are intentionally
+        # excluded.
         # Note: `object` does not define __contains__, so we cannot delegate via super().
         if not isinstance(item, str):
             return False
