@@ -120,12 +120,18 @@ def calc_capacity(
         # population, so we take the max across time of the cumulative net exponent — floored at 0
         # because growth begins at exp(0) = 1 (the initial population is always representable).
         net_daily = lamda - death_credit * lamda_d
+        # Inner floor: clamp the cumulative-exponent peak at 0 (growth begins at exp(0) = 1 —
+        # the initial population is always representable). For net-shrinking scenarios this
+        # PRESERVES the births-variance headroom from safety_multiplier (estimates ≈
+        # initial_pop * safety_multiplier), which is the semantically correct bound.
         peak_exponent = np.maximum(np.max(np.cumsum(net_daily, axis=0), axis=0), 0.0)
         # Note: safety_multiplier stays anchored to the births-only end-of-sim growth (exp_mu_t),
         # which equals the births-only peak because CBR >= 0 makes that cumulative monotonic.
         estimates = initial_pop * safety_multiplier * np.exp(peak_exponent)
-        # Floor at initial_pop: peak SIMULTANEOUS living count is at least the starting
-        # population (occurs at t=0 for a net-shrinking projection where growth < 1).
+        # Outer floor: defensive backstop at initial_pop. Intentionally redundant with the
+        # inner floor — they only differ when safety_factor > 0 (the inner floor keeps the
+        # multiplier's headroom, the outer floor would strip it). Both are kept so a future
+        # refactor that drops either one in isolation still won't under-allocate.
         estimates = np.maximum(estimates, initial_pop)
 
     # Clamp to uint32.max before casting so per-node values that overflow uint32 saturate
