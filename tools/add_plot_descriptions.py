@@ -81,7 +81,10 @@ def resolve_target_cell(cells, ins):
 
 
 def heading_of(text):
-    return text.lstrip().splitlines()[0].strip()
+    lines = text.lstrip().splitlines()
+    if not lines:
+        raise ValueError("markdown description is empty; expected a heading on the first line")
+    return lines[0].strip()
 
 
 def cell_heading(cell):
@@ -99,7 +102,9 @@ def apply_to_notebook(nb_path: Path, inserts, base_dir: Path, *, write: bool = T
     plan = []
     for ins in inserts:
         idx = resolve_target_cell(cells, ins)
-        text = (base_dir / ins["md_file"]).read_text(encoding="utf-8").rstrip() + "\n"
+        # Strip only trailing newlines, not other whitespace: two trailing spaces
+        # on the final line are a CommonMark hard-break marker.
+        text = (base_dir / ins["md_file"]).read_text(encoding="utf-8").rstrip("\n") + "\n"
         plan.append((idx, text))
 
     changed = False
@@ -138,7 +143,7 @@ def main():
 
     manifest_path = args.manifest.resolve()
     base_dir = manifest_path.parent
-    entries = json.loads(manifest_path.read_text())
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     any_change = False
     for entry in entries:
