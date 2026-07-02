@@ -78,9 +78,7 @@ def resolve_target_cell(cells, ins):
     has_marker = "after_cell_containing" in ins
     has_id = "after_cell_id" in ins
     if has_marker == has_id:
-        raise ValueError(
-            "each insert must specify exactly one of after_cell_containing or after_cell_id"
-        )
+        raise ValueError("each insert must specify exactly one of after_cell_containing or after_cell_id")
     if has_marker:
         return find_marker_cell(cells, ins["after_cell_containing"])
     return find_cell_by_id(cells, ins["after_cell_id"])
