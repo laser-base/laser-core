@@ -50,11 +50,7 @@ def find_marker_cell(cells, marker):
     # Only match code cells. A description inserted as a markdown cell could
     # quote the marker string verbatim, which would make later --check passes
     # see it as ambiguous against the very prose it generated.
-    matches = [
-        i for i, c in enumerate(cells)
-        if c.get("cell_type") == "code"
-        and marker in "".join(c.get("source", []))
-    ]
+    matches = [i for i, c in enumerate(cells) if c.get("cell_type") == "code" and marker in "".join(c.get("source", []))]
     if not matches:
         raise LookupError(f"no code cell contains marker {marker!r}")
     if len(matches) > 1:
